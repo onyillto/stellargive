@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Env, String,
-    Symbol,
+    Symbol, Vec,
 };
 
 #[contract]
@@ -30,7 +30,7 @@ pub struct CreatedEvent {
 pub struct Campaign {
     pub id: u64,
     pub creator: Address,
-    pub beneficiary: Address,
+    pub beneficiaries: Vec<(Address, u32)>,
     pub title: String,
     pub target_amount: i128,
     pub raised_amount: i128,
@@ -54,6 +54,7 @@ pub enum ContractError {
     ReentrancyDetected = 9,
     EmptyTitle = 10,
     NothingToClaim = 11,
+    InvalidShares = 12,
 }
 
 fn next_id_key() -> Symbol {
@@ -147,7 +148,7 @@ impl StellarGiveContract {
     pub fn create_campaign(
         env: Env,
         creator: Address,
-        beneficiary: Address,
+        beneficiaries: Vec<(Address, u32)>,
         title: String,
         target_amount: i128,
         deadline: u64,
@@ -166,6 +167,17 @@ impl StellarGiveContract {
         }
         validate_token_contract(&env, &accepted_token)?;
 
+        if beneficiaries.len() == 0 {
+            return Err(ContractError::InvalidShares);
+        }
+        let mut total_bps: u64 = 0;
+        for (_, share) in beneficiaries.iter() {
+            total_bps += u64::from(share);
+        }
+        if total_bps != 10_000 {
+            return Err(ContractError::InvalidShares);
+        }
+
         let id = read_next_id(&env);
         let next_id = id.checked_add(1).ok_or(ContractError::InvalidAmount)?;
         write_next_id(&env, next_id);
@@ -173,7 +185,7 @@ impl StellarGiveContract {
         let campaign = Campaign {
             id,
             creator: creator.clone(),
-            beneficiary: beneficiary.clone(),
+            beneficiaries: beneficiaries.clone(),
             title,
             target_amount,
             raised_amount: 0,
@@ -258,7 +270,8 @@ impl StellarGiveContract {
             return Err(ContractError::AlreadyClaimed);
         }
 
-        if caller != campaign.creator && caller != campaign.beneficiary {
+        let is_beneficiary = campaign.beneficiaries.iter().any(|(addr, _)| addr == caller);
+        if caller != campaign.creator && !is_beneficiary {
             return Err(ContractError::Unauthorized);
         }
         caller.require_auth();
@@ -274,12 +287,28 @@ impl StellarGiveContract {
 
         enter_lock(&env)?;
         let result = (|| {
-            let amount = campaign.raised_amount;
-            // Funds are always paid out to beneficiary to keep payout path deterministic.
+            let total = campaign.raised_amount;
+            let n = campaign.beneficiaries.len();
+
+            // Pay each non-first beneficiary their floor-division share.
+            let mut remainder = total;
+            for i in 1..n {
+                let (addr, share_bps) = campaign.beneficiaries.get(i).unwrap();
+                let payout = (total * i128::from(share_bps)) / 10_000_i128;
+                token::TokenClient::new(&env, &campaign.accepted_token).transfer(
+                    &env.current_contract_address(),
+                    &addr,
+                    &payout,
+                );
+                remainder -= payout;
+            }
+
+            // First beneficiary receives remainder, absorbing any rounding dust.
+            let (first_addr, _) = campaign.beneficiaries.get(0).unwrap();
             token::TokenClient::new(&env, &campaign.accepted_token).transfer(
                 &env.current_contract_address(),
-                &campaign.beneficiary,
-                &amount,
+                &first_addr,
+                &remainder,
             );
 
             campaign.raised_amount = 0;
@@ -288,10 +317,10 @@ impl StellarGiveContract {
 
             env.events().publish(
                 (symbol_short!("funds"), symbol_short!("claimed")),
-                (campaign.id, caller, campaign.beneficiary, amount, campaign.accepted_token),
+                (campaign.id, caller, total, campaign.accepted_token),
             );
 
-            Ok(amount)
+            Ok(total)
         })();
 
         exit_lock(&env);
@@ -309,7 +338,7 @@ impl StellarGiveContract {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::{Address as _, Events as _, Ledger};
-    use soroban_sdk::{token, Address, Env, String, TryFromVal};
+    use soroban_sdk::{token, Address, Env, String, TryFromVal, Vec};
 
     fn set_timestamp(env: &Env, timestamp: u64) {
         let mut ledger = env.ledger().get();
@@ -352,9 +381,11 @@ mod tests {
         let (env, client, creator, beneficiary, _donor, token_client, _) = setup();
         set_timestamp(&env, 1_000);
 
+        let mut bens = Vec::new(&env);
+        bens.push_back((beneficiary.clone(), 10_000_u32));
         let id = client.create_campaign(
             &creator,
-            &beneficiary,
+            &bens,
             &String::from_str(&env, "Flood Relief"),
             &500_000,
             &2_000,
@@ -365,7 +396,7 @@ mod tests {
         assert_eq!(campaign.id, 1);
         assert_eq!(campaign.status, CampaignStatus::Active);
         assert_eq!(campaign.creator, creator);
-        assert_eq!(campaign.beneficiary, beneficiary);
+        assert_eq!(campaign.beneficiaries, bens);
         assert_eq!(campaign.target_amount, 500_000);
         assert_eq!(campaign.raised_amount, 0);
     }
@@ -376,9 +407,11 @@ mod tests {
         set_timestamp(&env, 1_000);
 
         let target_amount: i128 = 500_000;
+        let mut bens = Vec::new(&env);
+        bens.push_back((beneficiary.clone(), 10_000_u32));
         let id = client.create_campaign(
             &creator,
-            &beneficiary,
+            &bens,
             &String::from_str(&env, "Flood Relief"),
             &target_amount,
             &2_000,
@@ -410,9 +443,11 @@ mod tests {
         let (env, client, creator, beneficiary, donor, token_client, _) = setup();
         set_timestamp(&env, 5_000);
 
+        let mut bens = Vec::new(&env);
+        bens.push_back((beneficiary.clone(), 10_000_u32));
         let campaign_id = client.create_campaign(
             &creator,
-            &beneficiary,
+            &bens,
             &String::from_str(&env, "Medical Aid"),
             &100_000,
             &10_000,
@@ -435,9 +470,11 @@ mod tests {
         let (env, client, creator, beneficiary, donor, token_client, _) = setup();
         set_timestamp(&env, 10_000);
 
+        let mut bens = Vec::new(&env);
+        bens.push_back((beneficiary.clone(), 10_000_u32));
         let campaign_id = client.create_campaign(
             &creator,
-            &beneficiary,
+            &bens,
             &String::from_str(&env, "School Rebuild"),
             &120_000,
             &20_000,
@@ -462,9 +499,11 @@ mod tests {
         let (env, client, creator, beneficiary, donor, token_client, _) = setup();
         set_timestamp(&env, 100);
 
+        let mut bens = Vec::new(&env);
+        bens.push_back((beneficiary.clone(), 10_000_u32));
         let campaign_id = client.create_campaign(
             &creator,
-            &beneficiary,
+            &bens,
             &String::from_str(&env, "Emergency Shelter"),
             &500_000,
             &500,
@@ -486,9 +525,11 @@ mod tests {
         let (env, client, creator, beneficiary, donor, token_client, _) = setup();
         set_timestamp(&env, 200);
 
+        let mut bens = Vec::new(&env);
+        bens.push_back((beneficiary.clone(), 10_000_u32));
         let campaign_id = client.create_campaign(
             &creator,
-            &beneficiary,
+            &bens,
             &String::from_str(&env, "Food Support"),
             &100_000,
             &1_000,
@@ -500,5 +541,119 @@ mod tests {
         let attacker = Address::generate(&env);
         let error = client.try_claim_funds(&attacker, &campaign_id);
         assert!(error.is_err());
+    }
+
+    #[test]
+    fn split_50_50_distributes_evenly() {
+        let (env, client, creator, beneficiary, donor, token_client, _) = setup();
+        let beneficiary2 = Address::generate(&env);
+        set_timestamp(&env, 1_000);
+
+        let mut bens = Vec::new(&env);
+        bens.push_back((beneficiary.clone(), 5_000_u32));
+        bens.push_back((beneficiary2.clone(), 5_000_u32));
+
+        let campaign_id = client.create_campaign(
+            &creator,
+            &bens,
+            &String::from_str(&env, "Dual Relief"),
+            &200_000,
+            &2_000,
+            &token_client.address,
+        );
+
+        client.donate(&donor, &campaign_id, &200_000);
+
+        let b1_before = token_client.balance(&beneficiary);
+        let b2_before = token_client.balance(&beneficiary2);
+        let claimed = client.claim_funds(&creator, &campaign_id);
+        let b1_after = token_client.balance(&beneficiary);
+        let b2_after = token_client.balance(&beneficiary2);
+
+        assert_eq!(claimed, 200_000);
+        assert_eq!(b1_after - b1_before, 100_000);
+        assert_eq!(b2_after - b2_before, 100_000);
+        assert_eq!(client.get_campaign(&campaign_id).status, CampaignStatus::Claimed);
+    }
+
+    #[test]
+    fn split_uneven_three_way_with_rounding() {
+        let (env, client, creator, beneficiary, donor, token_client, _) = setup();
+        let beneficiary2 = Address::generate(&env);
+        let beneficiary3 = Address::generate(&env);
+        set_timestamp(&env, 1_000);
+
+        let mut bens = Vec::new(&env);
+        bens.push_back((beneficiary.clone(), 3_334_u32));
+        bens.push_back((beneficiary2.clone(), 3_333_u32));
+        bens.push_back((beneficiary3.clone(), 3_333_u32));
+
+        let campaign_id = client.create_campaign(
+            &creator,
+            &bens,
+            &String::from_str(&env, "Three Way"),
+            &10_000,
+            &5_000,
+            &token_client.address,
+        );
+
+        client.donate(&donor, &campaign_id, &10_000);
+
+        let b1_before = token_client.balance(&beneficiary);
+        let b2_before = token_client.balance(&beneficiary2);
+        let b3_before = token_client.balance(&beneficiary3);
+        let claimed = client.claim_funds(&creator, &campaign_id);
+        let b1_after = token_client.balance(&beneficiary);
+        let b2_after = token_client.balance(&beneficiary2);
+        let b3_after = token_client.balance(&beneficiary3);
+
+        // b2 and b3: floor(10_000 * 3_333 / 10_000) = 3_333 each
+        // b1 (first): 10_000 - 3_333 - 3_333 = 3_334 (absorbs rounding dust)
+        assert_eq!(claimed, 10_000);
+        assert_eq!(b2_after - b2_before, 3_333);
+        assert_eq!(b3_after - b3_before, 3_333);
+        assert_eq!(b1_after - b1_before, 3_334);
+        assert_eq!(
+            (b1_after - b1_before) + (b2_after - b2_before) + (b3_after - b3_before),
+            10_000
+        );
+    }
+
+    #[test]
+    fn invalid_shares_not_summing_to_10000_rejected() {
+        let (env, client, creator, beneficiary, _donor, token_client, _) = setup();
+        let beneficiary2 = Address::generate(&env);
+        set_timestamp(&env, 1_000);
+
+        let mut bens = Vec::new(&env);
+        bens.push_back((beneficiary.clone(), 5_000_u32));
+        bens.push_back((beneficiary2.clone(), 4_999_u32));
+
+        let result = client.try_create_campaign(
+            &creator,
+            &bens,
+            &String::from_str(&env, "Bad Shares"),
+            &100_000,
+            &2_000,
+            &token_client.address,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn empty_beneficiaries_rejected() {
+        let (env, client, creator, _beneficiary, _donor, token_client, _) = setup();
+        set_timestamp(&env, 1_000);
+
+        let bens: Vec<(Address, u32)> = Vec::new(&env);
+        let result = client.try_create_campaign(
+            &creator,
+            &bens,
+            &String::from_str(&env, "No Bens"),
+            &100_000,
+            &2_000,
+            &token_client.address,
+        );
+        assert!(result.is_err());
     }
 }
