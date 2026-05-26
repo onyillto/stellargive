@@ -677,6 +677,53 @@ mod tests {
         bens.push_back((beneficiary.clone(), 3_334_u32));
         bens.push_back((beneficiary2.clone(), 3_333_u32));
         bens.push_back((beneficiary3.clone(), 3_333_u32));
+    #[test]
+    fn invalid_shares_not_summing_to_10000_rejected() {
+        let (env, client, creator, beneficiary, _donor, token_client, _) = setup();
+        let beneficiary2 = Address::generate(&env);
+        set_timestamp(&env, 1_000);
+
+        let mut bens = Vec::new(&env);
+        bens.push_back((beneficiary.clone(), 5_000_u32));
+        bens.push_back((beneficiary2.clone(), 4_999_u32));
+
+        let result = client.try_create_campaign(
+            &creator,
+            &bens,
+            &String::from_str(&env, "Bad Shares"),
+            &100_000,
+            &2_000,
+            &token_client.address,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn id_generation_is_sequential_and_collision_free() {
+        let (env, client, creator, beneficiary, _, token_client, _) = setup();
+        env.budget().reset_unlimited();
+        set_timestamp(&env, 1_000);
+
+        let mut bens = Vec::new(&env);
+        bens.push_back((beneficiary.clone(), 10_000_u32));
+
+        for expected_id in 1_u64..=100_u64 {
+            let id = client.create_campaign(
+                &creator,
+                &bens,
+                &String::from_str(&env, "Bench"),
+                &1_000,
+                &2_000,
+                &token_client.address,
+            );
+            assert_eq!(id, expected_id);
+        }
+    }
+
+    #[test]
+    fn empty_beneficiaries_rejected() {
+        let (env, client, creator, _beneficiary, _donor, token_client, _) = setup();
+        set_timestamp(&env, 1_000);
 
         let bens: Vec<(Address, u32)> = Vec::new(&env);
         let result = client.try_create_campaign(
@@ -734,28 +781,6 @@ mod tests {
     }
 
     #[test]
-    fn id_generation_is_sequential_and_collision_free() {
-        let (env, client, creator, beneficiary, _, token_client, _) = setup();
-        env.budget().reset_unlimited();
-        set_timestamp(&env, 1_000);
-
-        let mut bens = Vec::new(&env);
-        bens.push_back((beneficiary.clone(), 10_000_u32));
-
-        for expected_id in 1_u64..=100_u64 {
-            let id = client.create_campaign(
-                &creator,
-                &bens,
-                &String::from_str(&env, "Bench"),
-                &1_000,
-                &2_000,
-                &token_client.address,
-            );
-            assert_eq!(id, expected_id);
-        }
-    }
-
-    #[test]
     fn empty_beneficiaries_rejected() {
         let (env, client, creator, _beneficiary, _donor, token_client, _) = setup();
         set_timestamp(&env, 1_000);
@@ -770,5 +795,49 @@ mod tests {
             &token_client.address,
         );
         assert!(result.is_err());
+    #[test]
+    fn reentrancy_lock_uses_temporary_storage_and_blocks_reentry() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarGiveContract);
+
+        client.donate(&donor, &campaign_id, &10_000);
+        client.donate(&donor2, &campaign_id, &50_000);
+        assert_eq!(client.get_top_donors(&campaign_id).get(0).unwrap().0, donor2);
+
+        client.donate(&donor, &campaign_id, &60_000); // donor total: 70_000 → now #1
+        let top = client.get_top_donors(&campaign_id);
+        assert_eq!(top.get(0).unwrap().0, donor);
+        assert_eq!(top.get(0).unwrap().1, 70_000);
+        assert_eq!(top.get(1).unwrap().0, donor2);
+    }
+
+    #[test]
+    fn reentrancy_lock_uses_temporary_storage_and_blocks_reentry() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarGiveContract);
+
+        env.as_contract(&contract_id, || {
+            let key = super::lock_key();
+
+            // Lock key must be absent before any entry.
+            assert!(!env.storage().temporary().has(&key));
+            assert!(!env.storage().persistent().has(&key));
+
+            // First entry succeeds; key appears in temporary storage only.
+            super::enter_lock(&env).unwrap();
+            assert!(env.storage().temporary().has(&key));
+            assert!(!env.storage().persistent().has(&key));
+
+            // Re-entry from the same execution context is rejected.
+            assert_eq!(super::enter_lock(&env), Err(ContractError::ReentrancyDetected));
+
+            // Releasing the lock removes the key from temporary storage.
+            super::exit_lock(&env);
+            assert!(!env.storage().temporary().has(&key));
+
+            // A fresh entry succeeds after release.
+            super::enter_lock(&env).unwrap();
+            super::exit_lock(&env);
+        });
     }
 }
