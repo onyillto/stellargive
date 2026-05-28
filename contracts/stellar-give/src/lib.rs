@@ -397,7 +397,7 @@ impl StellarGiveContract {
     /// * `category` - Lowercase browsing category. Prefer stable symbols like
     ///   `medical`, `food`, `shelter`, `education`, `relief`, or `other`.
     /// * `target_amount` - Funding goal in stroops. Must be positive.
-    /// * `deadline` - Unix timestamp after which donations are no longer accepted.
+    /// * `deadline` - Unix timestamp after which donations are no longer accepted. Validated against the ledger time source (`env.ledger().timestamp()`).
     /// * `accepted_token` - Token contract address. Must implement the Soroban token interface.
     ///
     /// # Errors
@@ -1011,6 +1011,27 @@ mod tests {
             &None,
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn create_campaign_rejects_past_deadline() {
+        let (env, client, creator, beneficiary, _donor, _admin, token_client, _) = setup();
+        set_timestamp(&env, 5_000); // Mock current ledger time
+
+        let bens = single_ben(&env, &beneficiary);
+
+        let result = client.try_create_campaign(
+            &creator,
+            &bens,
+            &String::from_str(&env, "Past Deadline"),
+            &String::from_str(&env, "https://example.com/meta"),
+            &symbol_short!("relief"),
+            &10_000_000,
+            &4_999, // Set deadline strictly in the past
+            &token_client.address,
+            &None,
+        );
+        assert_eq!(result, Err(Ok(ContractError::InvalidDeadline)));
     }
 
     #[test]
