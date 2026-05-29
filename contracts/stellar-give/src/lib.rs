@@ -831,10 +831,16 @@ impl StellarGiveContract {
     }
 
     pub fn upgrade(env: Env, new_wasm_hash: soroban_sdk::BytesN<32>) -> Result<(), ContractError> {
-        let owner: Address = env.storage().instance().get(&owner_key()).ok_or(ContractError::NotInitialized)?;
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&owner_key())
+            .ok_or(ContractError::NotInitialized)?;
         owner.require_auth();
-        env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
-        env.events().publish((symbol_short!("Upgraded"),), new_wasm_hash);
+        env.deployer()
+            .update_current_contract_wasm(new_wasm_hash.clone());
+        env.events()
+            .publish((symbol_short!("Upgraded"),), new_wasm_hash);
         Ok(())
     }
 
@@ -846,10 +852,15 @@ impl StellarGiveContract {
     }
 
     pub fn set_owner(env: Env, new_owner: Address) -> Result<(), ContractError> {
-        let owner: Address = env.storage().instance().get(&owner_key()).ok_or(ContractError::NotInitialized)?;
+        let owner: Address = env
+            .storage()
+            .instance()
+            .get(&owner_key())
+            .ok_or(ContractError::NotInitialized)?;
         owner.require_auth();
         env.storage().instance().set(&owner_key(), &new_owner);
-        env.events().publish((symbol_short!("OwnerSet"),), new_owner);
+        env.events()
+            .publish((symbol_short!("OwnerSet"),), new_owner);
         Ok(())
     }
 
@@ -876,7 +887,7 @@ impl StellarGiveContract {
         let mut result = Vec::new(&env);
         let next_id = read_next_id(&env);
         let start_id = offset + 1;
-        
+
         let mut end_id = offset + (limit as u64);
         if end_id >= next_id {
             if next_id > 0 {
@@ -885,7 +896,7 @@ impl StellarGiveContract {
                 end_id = 0;
             }
         }
-        
+
         let now = env.ledger().timestamp();
         for id in start_id..=end_id {
             if let Ok(mut campaign) = read_campaign(&env, id) {
@@ -2444,7 +2455,13 @@ mod tests {
         );
 
         let comment_str = String::from_str(&env, "Great project!");
-        client.donate(&donor, &campaign_id, &1_000_000, &false, &Some(comment_str.clone()));
+        client.donate(
+            &donor,
+            &campaign_id,
+            &1_000_000,
+            &false,
+            &Some(comment_str.clone()),
+        );
 
         let event = env
             .events()
@@ -2529,7 +2546,7 @@ mod tests {
 
         let campaign = client.get_campaign(&campaign_id);
         assert_eq!(campaign.raised_amount, 1_000_000);
-        
+
         env.as_contract(&client.address, || {
             let contribution = read_donor_contribution(&env, campaign_id, &donor);
             assert_eq!(contribution, 1_000_000);
@@ -2585,10 +2602,7 @@ mod tests {
             assert_eq!(campaign.id, id);
             assert_eq!(campaign.creator, creator);
             assert_eq!(campaign.beneficiaries, bens);
-            assert_eq!(
-                campaign.title,
-                String::from_str(&env, "Medical Aid Fund")
-            );
+            assert_eq!(campaign.title, String::from_str(&env, "Medical Aid Fund"));
             assert_eq!(
                 campaign.metadata_uri,
                 String::from_str(&env, "https://ipfs.io/ipfs/QmTest123")
@@ -2988,8 +3002,7 @@ mod tests {
             let (env, client, creator, _beneficiary, _donor, _admin, token_client, _) = setup();
             set_timestamp(&env, 1_000);
 
-            let contract_ben =
-                env.as_contract(&client.address, || env.current_contract_address());
+            let contract_ben = env.as_contract(&client.address, || env.current_contract_address());
             let mut bens = Vec::new(&env);
             bens.push_back((contract_ben, 10_000_u32));
 
@@ -3067,8 +3080,16 @@ mod tests {
 
         #[test]
         fn id_increments_across_multiple_creators() {
-            let (env, client, creator, beneficiary, _donor, _admin, token_client, token_admin_client) =
-                setup();
+            let (
+                env,
+                client,
+                creator,
+                beneficiary,
+                _donor,
+                _admin,
+                token_client,
+                token_admin_client,
+            ) = setup();
             set_timestamp(&env, 1_000);
 
             let creator2 = Address::generate(&env);
@@ -3349,8 +3370,17 @@ mod tests {
 
         #[test]
         fn full_flow_with_multiple_donors() {
-            let (env, client, campaign_id, creator, beneficiary, donor, _admin, token_client, token_admin_client) =
-                setup_funded_campaign();
+            let (
+                env,
+                client,
+                campaign_id,
+                creator,
+                beneficiary,
+                donor,
+                _admin,
+                token_client,
+                token_admin_client,
+            ) = setup_funded_campaign();
 
             let donor2 = Address::generate(&env);
             token_admin_client.mint(&donor2, &1_000_000_000_000);
