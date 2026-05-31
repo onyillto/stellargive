@@ -7,9 +7,40 @@ import { CampaignCard } from "@/components/CampaignCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCampaignsPaged } from "@/hooks/useSoroban";
-import { Loader2, Search, Compass } from "lucide-react";
+import { Loader2, Search, Compass, ArrowUpDown } from "lucide-react";
+import type { Campaign } from "@/lib/soroban";
 
 const PAGE_SIZE = 9;
+
+type SortKey = "newest" | "ending-soon" | "near-goal" | "most-raised";
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "newest", label: "Newest" },
+  { key: "ending-soon", label: "Ending Soon" },
+  { key: "near-goal", label: "Near Goal" },
+  { key: "most-raised", label: "Most Raised" },
+];
+
+function sortCampaigns(campaigns: Campaign[], sortBy: SortKey): Campaign[] {
+  const sorted = [...campaigns];
+  switch (sortBy) {
+    case "newest":
+      return sorted.sort((a, b) => Number(b.deadline) - Number(a.deadline));
+    case "ending-soon":
+      return sorted.sort((a, b) => Number(a.deadline) - Number(b.deadline));
+    case "near-goal": {
+      const progress = (c: Campaign) =>
+        c.target_amount === 0n
+          ? 0
+          : Number((c.raised_amount * 10_000n) / c.target_amount);
+      return sorted.sort((a, b) => progress(b) - progress(a));
+    }
+    case "most-raised":
+      return sorted.sort((a, b) => Number(b.raised_amount) - Number(a.raised_amount));
+    default:
+      return sorted;
+  }
+}
 
 function ExploreContent() {
   const router = useRouter();
@@ -18,6 +49,7 @@ function ExploreContent() {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "funded">("active");
+  const [sortBy, setSortBy] = useState<SortKey>("newest");
 
   const { data, isLoading, isFetching } = useCampaignsPaged(limit);
   const campaigns = data?.campaigns ?? [];
@@ -32,17 +64,20 @@ function ExploreContent() {
     const status = searchParams.get("status");
     if (status === "all" || status === "active" || status === "funded") {
       setStatusFilter(status);
-      return;
     }
-    setStatusFilter("active");
+    const sort = searchParams.get("sort");
+    if (SORT_OPTIONS.some((o) => o.key === sort)) {
+      setSortBy(sort as SortKey);
+    }
   }, [searchParams]);
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams.toString());
     next.set("status", statusFilter);
+    next.set("sort", sortBy);
     const query = next.toString();
     router.replace(query ? `/explore?${query}` : "/explore", { scroll: false });
-  }, [router, searchParams, statusFilter]);
+  }, [router, searchParams, statusFilter, sortBy]);
 
   const filtered = useMemo(() => {
     const byStatus = campaigns.filter((campaign) => {
@@ -54,13 +89,16 @@ function ExploreContent() {
     });
 
     const term = debouncedSearch.trim().toLowerCase();
-    if (!term) return byStatus;
-    return byStatus.filter(
-      (c) =>
-        c.title.toLowerCase().includes(term) ||
-        c.creator.toLowerCase().includes(term)
-    );
-  }, [campaigns, debouncedSearch, statusFilter]);
+    const searched = !term
+      ? byStatus
+      : byStatus.filter(
+          (c) =>
+            c.title.toLowerCase().includes(term) ||
+            c.creator.toLowerCase().includes(term)
+        );
+
+    return sortCampaigns(searched, sortBy);
+  }, [campaigns, debouncedSearch, statusFilter, sortBy]);
 
   const emptyMessage = useMemo(() => {
     if (debouncedSearch) {
@@ -90,23 +128,43 @@ function ExploreContent() {
           </p>
         </div>
 
-        <div className="relative max-w-sm">
-          <label htmlFor="explore-search" className="sr-only">
-            Search campaigns
-          </label>
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            id="explore-search"
-            type="search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by title or creator"
-            autoComplete="off"
-            className="pl-9"
-          />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <label htmlFor="explore-search" className="sr-only">
+              Search campaigns
+            </label>
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              id="explore-search"
+              type="search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by title or creator"
+              autoComplete="off"
+              className="pl-9"
+            />
+          </div>
+          <div className="relative w-full sm:w-44">
+            <label htmlFor="explore-sort" className="sr-only">
+              Sort by
+            </label>
+            <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <select
+              id="explore-sort"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortKey)}
+              className="flex h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.key} value={opt.key}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2" role="tablist" aria-label="Campaign status filters">

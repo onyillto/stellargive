@@ -471,7 +471,7 @@ fn validate_beneficiaries(
 }
 
 /// Distributes raised funds to beneficiaries after deducting the platform fee.
-/// 
+///
 /// Net proceeds (after 1% platform fee) are split proportionally among
 /// beneficiaries according to their basis-point shares. The first beneficiary
 /// absorbs any rounding dust so that `fee + Σpayouts == amount` exactly.
@@ -771,7 +771,7 @@ impl StellarGiveContract {
                 // Auto-claim: immediately transfer funds to beneficiaries
                 let admin = read_admin(&env)?;
                 let total_raised = campaign.raised_amount;
-                
+
                 // Distribute funds to beneficiaries
                 distribute_funds(&env, &admin, &campaign, total_raised)?;
 
@@ -855,7 +855,11 @@ impl StellarGiveContract {
     ///
     /// # Returns
     /// `Ok(gross_amount)` with the total settled amount in stroops.
-    pub fn claim_funds(env: Env, beneficiary: Address, campaign_id: u64) -> Result<i128, ContractError> {
+    pub fn claim_funds(
+        env: Env,
+        beneficiary: Address,
+        campaign_id: u64,
+    ) -> Result<i128, ContractError> {
         beneficiary.require_auth();
 
         let mut campaign = read_campaign(&env, campaign_id)?;
@@ -897,7 +901,12 @@ impl StellarGiveContract {
             // Gross amount in event preserves the original raised amount for indexers.
             env.events().publish(
                 (symbol_short!("funds"), symbol_short!("claimed")),
-                (campaign.id, beneficiary.clone(), amount, campaign.accepted_token.clone()),
+                (
+                    campaign.id,
+                    beneficiary.clone(),
+                    amount,
+                    campaign.accepted_token.clone(),
+                ),
             );
 
             env.events().publish(
@@ -1040,14 +1049,14 @@ impl StellarGiveContract {
     }
 
     /// Returns the time remaining until the campaign deadline in seconds.
-    /// 
+    ///
     /// Returns 0 if the deadline has passed, otherwise returns the number of seconds
     /// until the deadline. This is a read-only function that requires no authentication.
     #[readonly]
     pub fn get_time_left(env: Env, campaign_id: u64) -> Result<u64, ContractError> {
         let campaign = read_campaign(&env, campaign_id)?;
         let now = env.ledger().timestamp();
-        
+
         if now >= campaign.deadline {
             Ok(0)
         } else {
@@ -1056,7 +1065,11 @@ impl StellarGiveContract {
     }
 
     /// Adds a batch of addresses to the campaign whitelist. Only the creator may call.
-    pub fn add_to_whitelist(env: Env, id: u64, addresses: Vec<Address>) -> Result<(), ContractError> {
+    pub fn add_to_whitelist(
+        env: Env,
+        id: u64,
+        addresses: Vec<Address>,
+    ) -> Result<(), ContractError> {
         let mut campaign = read_campaign(&env, id)?;
         campaign.creator.require_auth();
 
@@ -3857,10 +3870,13 @@ mod tests {
             assert_eq!(claimed, 10_000_000);
 
             let events = env.events().all();
-            let claimed_event_exists = events.iter().any(|event| {
-                event.topics.get(0).unwrap() == symbol_short!("claimed").into()
-            });
-            assert!(claimed_event_exists, "Audit event Claimed must be published");
+            let claimed_event_exists = events
+                .iter()
+                .any(|event| event.topics.get(0).unwrap() == symbol_short!("claimed").into());
+            assert!(
+                claimed_event_exists,
+                "Audit event Claimed must be published"
+            );
         }
 
         #[test]
@@ -3958,7 +3974,10 @@ mod tests {
             // Check that beneficiary received funds (net of 1% fee)
             let beneficiary_balance_after = token_client.balance(&beneficiary);
             let net_amount = 10_000_000 - calculate_platform_fee(10_000_000).unwrap();
-            assert_eq!(beneficiary_balance_after - beneficiary_balance_before, net_amount);
+            assert_eq!(
+                beneficiary_balance_after - beneficiary_balance_before,
+                net_amount
+            );
         }
 
         #[test]
@@ -3989,8 +4008,14 @@ mod tests {
             // Try to donate again - should fail because campaign is not Active
             let second_donor = Address::generate(&env);
             let result = client.try_donate(&second_donor, &campaign_id, &1_000_000, &false, &None);
-            assert!(result.is_err(), "donation after auto-claim must be rejected");
-            assert_eq!(result.unwrap_err().unwrap(), ContractError::CampaignNotActive);
+            assert!(
+                result.is_err(),
+                "donation after auto-claim must be rejected"
+            );
+            assert_eq!(
+                result.unwrap_err().unwrap(),
+                ContractError::CampaignNotActive
+            );
         }
 
         #[test]
@@ -4065,7 +4090,10 @@ mod tests {
             // Check that beneficiary received funds based on the total raised (15M, not the target 10M)
             let beneficiary_balance_after = token_client.balance(&beneficiary);
             let net_amount = 15_000_000 - calculate_platform_fee(15_000_000).unwrap();
-            assert_eq!(beneficiary_balance_after - beneficiary_balance_before, net_amount);
+            assert_eq!(
+                beneficiary_balance_after - beneficiary_balance_before,
+                net_amount
+            );
         }
 
         #[test]
@@ -4177,7 +4205,7 @@ mod tests {
                 &String::from_str(&env, "https://example.com/meta"),
                 &symbol_short!("relief"),
                 &10_000_000,
-                &2_000,  // deadline at 2000
+                &2_000, // deadline at 2000
                 &token_client.address,
                 &None,
             );
@@ -4209,7 +4237,7 @@ mod tests {
             );
 
             let time_left = client.get_time_left(&campaign_id).unwrap();
-            assert_eq!(time_left, 4_000);  // 5000 - 1000
+            assert_eq!(time_left, 4_000); // 5000 - 1000
         }
 
         #[test]
@@ -4243,7 +4271,10 @@ mod tests {
             let (env, client, _creator, _beneficiary, _donor, _admin, _token_client, _) = setup();
 
             let result = client.try_get_time_left(&9_999u64);
-            assert!(result.is_err(), "get_time_left must reject nonexistent campaigns");
+            assert!(
+                result.is_err(),
+                "get_time_left must reject nonexistent campaigns"
+            );
             assert_eq!(
                 result.unwrap_err().unwrap(),
                 ContractError::CampaignNotFound

@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AddressLink } from "@/components/AddressLink";
 import { useEvents } from "@/hooks/useSoroban";
 import { fromStroops } from "@/lib/soroban";
-import { formatDistanceToNow } from "date-fns";
+import { RelativeTime } from "@/components/RelativeTime";
 import {
   Activity,
   ArrowUpRight,
@@ -117,7 +117,7 @@ export default function ActivityPage() {
 function ActivityRow({ event }: { event: any }) {
   const id = campaignId(event.data?.[0]);
   const when = event.createdAt
-    ? formatDistanceToNow(new Date(event.createdAt), { addSuffix: true })
+    ? <RelativeTime date={new Date(event.createdAt)} fallback={`Ledger ${event.ledger}`} />
     : `Ledger ${event.ledger}`;
 
   let icon = <Megaphone className="w-4 h-4 text-blue-500" />;

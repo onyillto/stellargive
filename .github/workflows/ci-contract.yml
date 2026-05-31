@@ -1,0 +1,45 @@
+name: Contract CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts/stellar-give
+
+      - name: Format check
+        working-directory: contracts/stellar-give
+        run: cargo fmt --check
+
+      - name: Clippy
+        working-directory: contracts/stellar-give
+        run: cargo clippy -- -D warnings
+
+      - name: Test
+        working-directory: contracts/stellar-give
+        run: cargo test --verbose
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-test-results
+          path: contracts/stellar-give/target/nextest/ci/junit.xml
+          retention-days: 7

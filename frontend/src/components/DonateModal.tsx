@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, Check } from "lucide-react";
 import confetti from "canvas-confetti";
 
+export function DonateModal({ campaign }: { campaign: Campaign }) {
   const {
     register,
     handleSubmit,

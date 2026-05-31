@@ -4,8 +4,8 @@ import { useEvents } from "@/hooks/useSoroban";
 import { fromStroops } from "@/lib/soroban";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Heart, ArrowUpRight, Activity } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import { AddressLink } from "@/components/AddressLink";
+import { RelativeTime } from "@/components/RelativeTime";
 
 export function RecentDonations({ campaignId }: { campaignId: bigint }) {
   const { data: allEvents, isLoading, isError } = useEvents();
@@ -98,7 +98,7 @@ export function RecentDonations({ campaignId }: { campaignId: bigint }) {
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {event.createdAt 
-                      ? formatDistanceToNow(new Date(event.createdAt), { addSuffix: true }) 
+                      ? <RelativeTime date={new Date(event.createdAt)} fallback={`Ledger ${event.ledger}`} />
                       : `Ledger ${event.ledger}`}
                   </p>
                 </div>

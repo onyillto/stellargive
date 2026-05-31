@@ -1,6 +1,8 @@
 # StellarGive
 
 [![Contract CI](https://github.com/Feyisara2108/stellargive/actions/workflows/ci.yml/badge.svg)](https://github.com/Feyisara2108/stellargive/actions)
+[![Contract Tests](https://github.com/Feyisara2108/stellargive/actions/workflows/ci-contract.yml/badge.svg)](https://github.com/Feyisara2108/stellargive/actions/workflows/ci-contract.yml)
+[![Lint & Format](https://github.com/Feyisara2108/stellargive/actions/workflows/ci-lint.yml/badge.svg)](https://github.com/Feyisara2108/stellargive/actions/workflows/ci-lint.yml)
 [![codecov](https://codecov.io/gh/Feyisara2108/stellargive/graph/badge.svg)](https://codecov.io/gh/Feyisara2108/stellargive)
 ![Soroban](https://img.shields.io/badge/Built%20on-Soroban-blue)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

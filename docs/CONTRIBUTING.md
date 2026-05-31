@@ -185,6 +185,38 @@ To prevent Cross-Site Scripting (XSS) and injection attacks, adhere to the follo
 - **HTML Sanitization**: Never render user-controlled HTML string payloads directly with `dangerouslySetInnerHTML` unless they are first passed through `sanitizeHtml` from `@/lib/sanitize`. Prefer plain text or standard React element interpolation (which React escapes by default) whenever possible.
 - **URL Sanitization**: Always wrap URLs provided by users (such as website and Twitter links) in `sanitizeUrl` from `@/lib/sanitize` before placing them in the `href` attribute of an `<a>` anchor tag. This blocks malicious protocols like `javascript:`, `data:`, and `vbscript:`.
 
+## 10. Pre-commit Hooks (Recommended)
+
+To catch lint and formatting issues before they reach CI, set up Husky locally:
+
+```bash
+# Install Husky
+npx husky init
+
+# Create a pre-commit hook that runs linters
+cat > .husky/pre-commit << 'EOF'
+#!/usr/bin/env sh
+. "$(dirname "$0")/_/husky.sh"
+
+cd frontend && npm run lint && npx prettier --check .
+cd ../contracts/stellar-give && cargo fmt --check && cargo clippy -- -D warnings
+EOF
+
+chmod +x .husky/pre-commit
+```
+
+This runs the same checks as CI before every commit. If any check fails, the commit is aborted until the issue is fixed.
+
+Alternatively, run the checks manually before pushing:
+
+```bash
+# Contract checks
+cd contracts/stellar-give && cargo fmt --check && cargo clippy -- -D warnings
+
+# Frontend checks
+cd frontend && npm run lint && npx prettier --check .
+```
+
 ## DevOps & Infrastructure
 
 ### Local Soroban Node
