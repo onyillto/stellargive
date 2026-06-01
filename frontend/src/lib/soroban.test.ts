@@ -78,14 +78,67 @@ describe("toStroops", () => {
     expect(toStroops(1)).toBe(10_000_000n);
   });
 
-  it("truncates decimals beyond 7 places", () => {
-    expect(toStroops("1.12345678")).toBe(toStroops("1.1234567"));
+  // --- Task 4: Exact conversion assertions ---
+
+  it("converts '1.0' to exactly 10_000_000n stroops", () => {
+    expect(toStroops("1.0")).toBe(10_000_000n);
   });
 
-  it("round-trips with fromStroops", () => {
+  it("converts '0.0000001' to exactly 1n stroop", () => {
+    expect(toStroops("0.0000001")).toBe(1n);
+  });
+
+  it("converts '1000000.5' to exactly 10_000_005_000_000n stroops", () => {
+    expect(toStroops("1000000.5")).toBe(10_000_005_000_000n);
+  });
+
+  // --- Task 4: Error-handling tests ---
+
+  it("throws on non-numeric string input", () => {
+    expect(() => toStroops("abc")).toThrow("Invalid amount: not a number");
+  });
+
+  it("throws on empty string", () => {
+    expect(() => toStroops("")).toThrow("Invalid amount: not a number");
+  });
+
+  it("throws on negative values", () => {
+    expect(() => toStroops("-1")).toThrow(
+      "Invalid amount: negative values not allowed"
+    );
+  });
+
+  it("throws on negative decimal values", () => {
+    expect(() => toStroops("-0.5")).toThrow(
+      "Invalid amount: negative values not allowed"
+    );
+  });
+
+  it("throws on excessive decimals (more than 7 places)", () => {
+    expect(() => toStroops("1.12345678")).toThrow(
+      "Invalid amount: exceeds 7 decimal places"
+    );
+  });
+
+  it("throws on mixed non-numeric content", () => {
+    expect(() => toStroops("12abc")).toThrow("Invalid amount: not a number");
+    expect(() => toStroops("1.2.3")).toThrow("Invalid amount: not a number");
+  });
+
+  // --- Task 4: Property-based round-trip test ---
+
+  it("round-trips with fromStroops for known values", () => {
     const amounts = ["0.0000001", "0.05", "0.5", "1", "100", "1234.5678901"];
     for (const amount of amounts) {
       expect(fromStroops(toStroops(amount))).toBe(amount);
+    }
+  });
+
+  it("round-trips with fromStroops for 100 random values", () => {
+    for (let i = 0; i < 100; i++) {
+      const val = Math.random() * 1000;
+      const fixed = val.toFixed(7);
+      expect(Number(fromStroops(toStroops(fixed)))).toBeCloseTo(val, 7);
     }
   });
 });
