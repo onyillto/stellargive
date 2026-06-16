@@ -17,6 +17,7 @@ fn test_persistent_storage_ttl_extension() {
         &creator,
         &bens,
         &String::from_str(&env, "TTL Test"),
+        &String::from_str(&env, "A test campaign description."),
         &String::from_str(&env, "https://example.com/meta"),
         &symbol_short!("relief"),
         &10_000_000_i128,

@@ -18,6 +18,7 @@ pub fn set_timestamp(env: &Env, timestamp: u64) {
 
 /// Standard test setup: registers a token, mints balances, deploys the
 /// contract, and initializes it. All auths are mocked.
+#[allow(dead_code)] // shared helper; not used by every test binary
 pub fn register_and_setup() -> (
     Env,
     StellarGiveContractClient<'static>,
