@@ -61,14 +61,6 @@ pub struct DonationEvent {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
-pub struct RefundEvent {
-    pub campaign_id: u64,
-    pub donor: Address,
-    pub amount: i128,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[contracttype]
 pub struct AutoClaimedEvent {
     pub campaign_id: u64,
     pub total_raised: i128,
@@ -172,6 +164,12 @@ pub enum ContractError {
     ContractPaused = 33,
     /// Refund rejected because campaign is not expired or target was met.
     RefundNotAllowed = 34,
+    /// Refund rejected because the campaign has not been cancelled.
+    CampaignNotCancelled = 35,
+    /// The donor has no recorded contribution left to refund.
+    NothingToRefund = 36,
+    /// The token transfer back to the donor failed during refund.
+    RefundTransferFailed = 37,
 }
 
 fn next_id_key() -> Symbol {
@@ -359,12 +357,6 @@ fn write_top_donors(env: &Env, id: u64, donors: &Vec<(Address, i128)>) {
     extend_persistent_ttl(env, &key);
 }
 
-fn write_donor_contribution(env: &Env, campaign_id: u64, donor: &Address, amount: i128) {
-    env.storage()
-        .persistent()
-        .set(&donor_contribution_key(campaign_id, donor), &amount);
-}
-
 fn goal_reached_topic(env: &Env) -> Symbol {
     Symbol::new(env, "goal_reached")
 }
@@ -386,6 +378,10 @@ fn write_creator_campaign_count(env: &Env, creator: &Address, count: u32) {
     let key = creator_campaign_count_key(creator);
     env.storage().persistent().set(&key, &count);
     extend_persistent_ttl(env, &key);
+}
+
+fn donor_contribution_key(campaign_id: u64, donor: &Address) -> (Symbol, u64, Address) {
+    (symbol_short!("DCON"), campaign_id, donor.clone())
 }
 
 fn read_donor_contribution(env: &Env, campaign_id: u64, donor: &Address) -> i128 {
@@ -996,7 +992,7 @@ impl StellarGiveContract {
         env.events().publish(
             (symbol_short!("cancel"),),
             CancelledEvent {
-                id: campaign_id,
+                id,
                 creator: campaign.creator,
             },
         );
@@ -1342,7 +1338,7 @@ impl StellarGiveContract {
         id: u64,
         addresses: Vec<Address>,
     ) -> Result<(), ContractError> {
-        let mut campaign = read_campaign(&env, id)?;
+        let campaign = read_campaign(&env, id)?;
         campaign.creator.require_auth();
 
         // Batch write whitelist entries
@@ -1689,7 +1685,7 @@ mod tests {
             &None,
         );
 
-        client.mock_all_auths().cancel_campaign(&creator, &campaign_id);
+        client.mock_all_auths().cancel_campaign(&campaign_id);
 
         assert_eq!(
             env.auths(),
@@ -1699,7 +1695,7 @@ mod tests {
                     function: AuthorizedFunction::Contract((
                         client.address.clone(),
                         Symbol::new(&env, "cancel_campaign"),
-                        (creator.clone(), campaign_id).into_val(&env)
+                        (campaign_id,).into_val(&env)
                     )),
                     sub_invocations: std::vec![]
                 }
@@ -1748,11 +1744,14 @@ mod tests {
             &None,
         );
 
+        // cancel_campaign authorizes the stored creator via require_auth(). Supplying
+        // only the attacker's auth leaves the creator's required auth unmet, so the
+        // host rejects the invocation before any contract logic runs.
         let attacker = Address::generate(&env);
         let invoke = MockAuthInvoke {
             contract: &client.address,
             fn_name: "cancel_campaign",
-            args: (attacker.clone(), campaign_id).into_val(&env),
+            args: (campaign_id,).into_val(&env),
             sub_invokes: &[],
         };
         let auths = [MockAuth {
@@ -1760,10 +1759,8 @@ mod tests {
             invoke: &invoke,
         }];
 
-        let result = client
-            .mock_auths(&auths)
-            .try_cancel_campaign(&attacker, &campaign_id);
-        assert_eq!(result, Err(Ok(ContractError::Unauthorized)));
+        let result = client.mock_auths(&auths).try_cancel_campaign(&campaign_id);
+        assert!(result.is_err());
         assert_eq!(
             client.get_campaign(&campaign_id).status,
             CampaignStatus::Active
@@ -1790,7 +1787,7 @@ mod tests {
         );
         client.donate(&donor, &campaign_id, &MIN_DONATION, &false, &None);
 
-        client.cancel_campaign(&creator, &campaign_id);
+        client.cancel_campaign(&campaign_id);
         assert_eq!(
             client.get_campaign(&campaign_id).status,
             CampaignStatus::Cancelled
@@ -1807,6 +1804,7 @@ mod tests {
             &creator,
             &bens,
             &String::from_str(&env, "Refundable"),
+            &String::from_str(&env, "A sample campaign description."),
             &String::from_str(&env, "https://example.com/meta"),
             &symbol_short!("relief"),
             &10_000_000,
@@ -1818,7 +1816,7 @@ mod tests {
         let contribution: i128 = 3_000_000;
         let donor_before = token_client.balance(&donor);
         client.donate(&donor, &campaign_id, &contribution, &false, &None);
-        client.cancel_campaign(&creator, &campaign_id);
+        client.cancel_campaign(&campaign_id);
 
         let refunded = client.claim_refund(&donor, &campaign_id);
         assert_eq!(refunded, contribution);
@@ -1842,6 +1840,7 @@ mod tests {
             &creator,
             &bens,
             &String::from_str(&env, "Refundable"),
+            &String::from_str(&env, "A sample campaign description."),
             &String::from_str(&env, "https://example.com/meta"),
             &symbol_short!("relief"),
             &10_000_000,
@@ -1852,7 +1851,7 @@ mod tests {
 
         let contribution: i128 = 2_500_000;
         client.donate(&donor, &campaign_id, &contribution, &false, &None);
-        client.cancel_campaign(&creator, &campaign_id);
+        client.cancel_campaign(&campaign_id);
         client.claim_refund(&donor, &campaign_id);
 
         let event = env
@@ -1885,6 +1884,7 @@ mod tests {
             &creator,
             &bens,
             &String::from_str(&env, "Funded And Claimed"),
+            &String::from_str(&env, "A sample campaign description."),
             &String::from_str(&env, "https://example.com/meta"),
             &symbol_short!("relief"),
             &10_000_000,
@@ -1900,7 +1900,7 @@ mod tests {
             CampaignStatus::Claimed
         );
 
-        let result = client.try_cancel_campaign(&creator, &campaign_id);
+        let result = client.try_cancel_campaign(&campaign_id);
         assert_eq!(result, Err(Ok(ContractError::CampaignNotActive)));
     }
 
@@ -1914,6 +1914,7 @@ mod tests {
             &creator,
             &bens,
             &String::from_str(&env, "Active Campaign"),
+            &String::from_str(&env, "A sample campaign description."),
             &String::from_str(&env, "https://example.com/meta"),
             &symbol_short!("relief"),
             &10_000_000,
@@ -2007,9 +2008,11 @@ mod tests {
         assert_eq!(after_first.status, CampaignStatus::Active);
 
         client.donate(&donor, &campaign_id, &7_000_000, &false, &None);
+        // The second donation meets the target, which auto-claims: funds are
+        // distributed immediately, raised_amount is zeroed and status is Claimed.
         let after_second = client.get_campaign(&campaign_id);
-        assert_eq!(after_second.raised_amount, 10_000_000);
-        assert_eq!(after_second.status, CampaignStatus::Funded);
+        assert_eq!(after_second.raised_amount, 0);
+        assert_eq!(after_second.status, CampaignStatus::Claimed);
     }
 
     #[test]
@@ -2050,9 +2053,10 @@ mod tests {
             .expect("event data did not decode as GoalReachedEvent");
         assert_eq!(payload.campaign_id, campaign_id);
         assert_eq!(payload.total_raised, 10_000_000);
+        // Hitting the exact target auto-claims, so the campaign ends Claimed.
         assert_eq!(
             client.get_campaign(&campaign_id).status,
-            CampaignStatus::Funded
+            CampaignStatus::Claimed
         );
     }
 
@@ -2109,9 +2113,10 @@ mod tests {
             .expect("event data did not decode as GoalReachedEvent");
         assert_eq!(payload.campaign_id, campaign_id);
         assert_eq!(payload.total_raised, 11_000_000);
+        // Overshooting the target auto-claims, so the campaign ends Claimed.
         assert_eq!(
             client.get_campaign(&campaign_id).status,
-            CampaignStatus::Funded
+            CampaignStatus::Claimed
         );
     }
 
@@ -2192,16 +2197,16 @@ mod tests {
             &None,
         );
 
-        client.donate(&donor, &campaign_id, &12_000_000, &false, &None);
-
         let ben_before = token_client.balance(&beneficiary);
         let admin_before = token_client.balance(&admin);
-        let claimed = client.claim_funds(&creator, &campaign_id);
+
+        // Meeting the target auto-claims, distributing funds within donate().
+        client.donate(&donor, &campaign_id, &12_000_000, &false, &None);
+
         let ben_after = token_client.balance(&beneficiary);
         let admin_after = token_client.balance(&admin);
         let campaign = client.get_campaign(&campaign_id);
 
-        assert_eq!(claimed, 12_000_000);
         assert_eq!(ben_after - ben_before, 11_880_000);
         assert_eq!(admin_after - admin_before, 120_000);
         assert_eq!(campaign.status, CampaignStatus::Claimed);
@@ -2290,15 +2295,15 @@ mod tests {
             &None,
         );
 
-        client.donate(&donor, &campaign_id, &20_000_000, &false, &None);
-
         let b1_before = token_client.balance(&beneficiary);
         let b2_before = token_client.balance(&beneficiary2);
-        let claimed = client.claim_funds(&creator, &campaign_id);
+
+        // Meeting the target auto-claims and splits funds within donate().
+        client.donate(&donor, &campaign_id, &20_000_000, &false, &None);
+
         let b1_after = token_client.balance(&beneficiary);
         let b2_after = token_client.balance(&beneficiary2);
 
-        assert_eq!(claimed, 20_000_000);
         assert_eq!(b2_after - b2_before, 9_900_000);
         assert_eq!(b1_after - b1_before, 9_900_000);
         assert_eq!((b1_after - b1_before) + (b2_after - b2_before), 19_800_000);
@@ -2333,17 +2338,17 @@ mod tests {
             &None,
         );
 
-        client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
-
         let b1_before = token_client.balance(&beneficiary);
         let b2_before = token_client.balance(&beneficiary2);
         let b3_before = token_client.balance(&beneficiary3);
-        let claimed = client.claim_funds(&creator, &campaign_id);
+
+        // Meeting the target auto-claims and splits funds within donate().
+        client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
+
         let b1_after = token_client.balance(&beneficiary);
         let b2_after = token_client.balance(&beneficiary2);
         let b3_after = token_client.balance(&beneficiary3);
 
-        assert_eq!(claimed, 10_000_000);
         let b2_delta = b2_after - b2_before;
         let b3_delta = b3_after - b3_before;
         let b1_delta = b1_after - b1_before;
@@ -2522,13 +2527,12 @@ mod tests {
             &token_client.address,
             &None,
         );
-        client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
-
         let ben_before = token_client.balance(&beneficiary);
         let admin_before = token_client.balance(&admin);
-        let claimed = client.claim_funds(&beneficiary, &campaign_id);
 
-        assert_eq!(claimed, 10_000_000);
+        // Meeting the target auto-claims, deducting the fee within donate().
+        client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
+
         assert_eq!(token_client.balance(&admin) - admin_before, 100_000);
         assert_eq!(token_client.balance(&beneficiary) - ben_before, 9_900_000);
     }
@@ -2552,11 +2556,11 @@ mod tests {
             &token_client.address,
             &None,
         );
-        client.donate(&donor, &campaign_id, &gross, &false, &None);
-
         let ben_before = token_client.balance(&beneficiary);
         let admin_before = token_client.balance(&admin);
-        client.claim_funds(&beneficiary, &campaign_id);
+
+        // Meeting the target auto-claims within donate().
+        client.donate(&donor, &campaign_id, &gross, &false, &None);
 
         let fee_delta = token_client.balance(&admin) - admin_before;
         let net_delta = token_client.balance(&beneficiary) - ben_before;
@@ -2601,7 +2605,10 @@ mod tests {
             &token_client.address,
             &None,
         );
-        client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
+        // Donate below target so auto-claim does not fire (a target-meeting
+        // donation would itself fail here, since auto-claim reads the admin).
+        client.donate(&donor, &campaign_id, &5_000_000, &false, &None);
+        set_timestamp(&env, 6_000); // past the deadline so a manual claim is allowed
 
         let result = client.try_claim_funds(&creator, &campaign_id);
         assert!(
@@ -2657,6 +2664,7 @@ mod tests {
             &creator,
             &bens,
             &String::from_str(&env, "Invalid Prefix"),
+            &String::from_str(&env, "A sample campaign description."),
             &String::from_str(&env, "ftp://example.com"),
             &symbol_short!("relief"),
             &MIN_TARGET,
@@ -2674,6 +2682,7 @@ mod tests {
             &creator,
             &bens,
             &String::from_str(&env, "Too Long"),
+            &String::from_str(&env, "A sample campaign description."),
             &String::from_str(&env, long_uri_str),
             &symbol_short!("relief"),
             &MIN_TARGET,
@@ -2717,6 +2726,7 @@ mod tests {
             &creator,
             &bens,
             &valid_title,
+            &String::from_str(&env, "A sample campaign description."),
             &String::from_str(&env, "https://example.com/meta"),
             &symbol_short!("relief"),
             &MIN_TARGET,
@@ -2732,6 +2742,7 @@ mod tests {
             &creator,
             &bens,
             &too_long_title,
+            &String::from_str(&env, "A sample campaign description."),
             &String::from_str(&env, "https://example.com/meta"),
             &symbol_short!("relief"),
             &MIN_TARGET,
@@ -3155,6 +3166,7 @@ mod tests {
                 creator,
                 bens,
                 &String::from_str(&client.env, "Test Campaign"),
+                &String::from_str(&client.env, "A sample campaign description."),
                 &String::from_str(&client.env, "https://example.com/meta"),
                 &symbol_short!("relief"),
                 &10_000_000,
@@ -3304,6 +3316,7 @@ mod tests {
                 &creator,
                 &bens,
                 &String::from_str(&env, ""),
+                &String::from_str(&env, "A sample campaign description."),
                 &String::from_str(&env, "https://example.com/meta"),
                 &symbol_short!("relief"),
                 &10_000_000,
@@ -3326,6 +3339,7 @@ mod tests {
                 &creator,
                 &bens,
                 &title_51,
+                &String::from_str(&env, "A sample campaign description."),
                 &String::from_str(&env, "https://example.com/meta"),
                 &symbol_short!("relief"),
                 &10_000_000,
@@ -3348,6 +3362,7 @@ mod tests {
                 &creator,
                 &bens,
                 &title_50,
+                &String::from_str(&env, "A sample campaign description."),
                 &String::from_str(&env, "https://example.com/meta"),
                 &symbol_short!("relief"),
                 &10_000_000,
@@ -3515,6 +3530,7 @@ mod tests {
                 &creator,
                 &bens,
                 &String::from_str(&env, "Bad URI"),
+                &String::from_str(&env, "A sample campaign description."),
                 &String::from_str(&env, "ftp://example.com/meta"),
                 &symbol_short!("relief"),
                 &10_000_000,
@@ -3538,6 +3554,7 @@ mod tests {
                 &creator,
                 &bens,
                 &String::from_str(&env, "Long URI"),
+                &String::from_str(&env, "A sample campaign description."),
                 &String::from_str(&env, long_uri_str),
                 &symbol_short!("relief"),
                 &10_000_000,
@@ -3854,7 +3871,7 @@ mod tests {
 
         #[test]
         fn full_flow_create_donate_target_met_claim_verify_balances() {
-            let (env, client, campaign_id, creator, beneficiary, donor, admin, token_client, _) =
+            let (_env, client, campaign_id, _creator, beneficiary, donor, admin, token_client, _) =
                 setup_funded_campaign();
 
             let initial = client.get_campaign(&campaign_id);
@@ -3866,23 +3883,17 @@ mod tests {
             let ben_before = token_client.balance(&beneficiary);
             let admin_before = token_client.balance(&admin);
 
+            // Meeting the target auto-claims: funds are distributed within
+            // donate(), so the campaign ends Claimed with raised_amount zeroed
+            // and the contract never retains a balance.
             client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
 
             let after_donate = client.get_campaign(&campaign_id);
-            assert_eq!(after_donate.raised_amount, 10_000_000);
-            assert_eq!(after_donate.status, CampaignStatus::Funded);
+            assert_eq!(after_donate.raised_amount, 0);
+            assert_eq!(after_donate.status, CampaignStatus::Claimed);
 
             let donor_after_donate = token_client.balance(&donor);
-            let contract_after_donate = token_client.balance(&client.address);
             assert_eq!(donor_before - donor_after_donate, 10_000_000);
-            assert_eq!(contract_after_donate - contract_before, 10_000_000);
-
-            let claimed = client.claim_funds(&creator, &campaign_id);
-            assert_eq!(claimed, 10_000_000);
-
-            let after_claim = client.get_campaign(&campaign_id);
-            assert_eq!(after_claim.status, CampaignStatus::Claimed);
-            assert_eq!(after_claim.raised_amount, 0);
 
             let ben_after = token_client.balance(&beneficiary);
             assert_eq!(ben_after - ben_before, 9_900_000);
@@ -3951,26 +3962,21 @@ mod tests {
 
         #[test]
         fn full_flow_with_overshoot_donation() {
-            let (env, client, campaign_id, creator, beneficiary, donor, admin, token_client, _) =
+            let (_env, client, campaign_id, _creator, beneficiary, donor, admin, token_client, _) =
                 setup_funded_campaign();
-
-            client.donate(&donor, &campaign_id, &15_000_000, &false, &None);
-
-            let after_donate = client.get_campaign(&campaign_id);
-            assert_eq!(after_donate.raised_amount, 15_000_000);
-            assert_eq!(after_donate.status, CampaignStatus::Funded);
 
             let ben_before = token_client.balance(&beneficiary);
             let admin_before = token_client.balance(&admin);
-            let claimed = client.claim_funds(&creator, &campaign_id);
 
-            assert_eq!(claimed, 15_000_000);
+            // Overshooting the target auto-claims the full raised amount.
+            client.donate(&donor, &campaign_id, &15_000_000, &false, &None);
+
             assert_eq!(token_client.balance(&beneficiary) - ben_before, 14_850_000);
             assert_eq!(token_client.balance(&admin) - admin_before, 150_000);
 
-            let after_claim = client.get_campaign(&campaign_id);
-            assert_eq!(after_claim.status, CampaignStatus::Claimed);
-            assert_eq!(after_claim.raised_amount, 0);
+            let after_donate = client.get_campaign(&campaign_id);
+            assert_eq!(after_donate.status, CampaignStatus::Claimed);
+            assert_eq!(after_donate.raised_amount, 0);
         }
 
         #[test]
@@ -3979,7 +3985,7 @@ mod tests {
                 env,
                 client,
                 campaign_id,
-                creator,
+                _creator,
                 beneficiary,
                 donor,
                 _admin,
@@ -3990,12 +3996,15 @@ mod tests {
             let donor2 = Address::generate(&env);
             token_admin_client.mint(&donor2, &1_000_000_000_000);
 
+            let ben_before = token_client.balance(&beneficiary);
+
             client.donate(&donor, &campaign_id, &6_000_000, &false, &None);
+            // The second donation meets the target and auto-claims.
             client.donate(&donor2, &campaign_id, &4_000_000, &false, &None);
 
             let after_donate = client.get_campaign(&campaign_id);
-            assert_eq!(after_donate.raised_amount, 10_000_000);
-            assert_eq!(after_donate.status, CampaignStatus::Funded);
+            assert_eq!(after_donate.raised_amount, 0);
+            assert_eq!(after_donate.status, CampaignStatus::Claimed);
 
             let top = client.get_top_donors(&campaign_id);
             assert_eq!(top.len(), 2);
@@ -4004,15 +4013,12 @@ mod tests {
             assert_eq!(top.get(1).unwrap().0, donor2);
             assert_eq!(top.get(1).unwrap().1, 4_000_000);
 
-            let ben_before = token_client.balance(&beneficiary);
-            let claimed = client.claim_funds(&beneficiary, &campaign_id);
-            assert_eq!(claimed, 10_000_000);
             assert_eq!(token_client.balance(&beneficiary) - ben_before, 9_900_000);
         }
 
         #[test]
         fn full_flow_with_anonymous_donation() {
-            let (env, client, campaign_id, _creator, _beneficiary, donor, _admin, token_client, _) =
+            let (env, client, campaign_id, _creator, _beneficiary, donor, _admin, _token_client, _) =
                 setup_funded_campaign();
 
             client.donate(&donor, &campaign_id, &10_000_000, &true, &None);
@@ -4039,22 +4045,27 @@ mod tests {
             ));
             assert_eq!(payload.donor, masked);
 
+            // Meeting the target auto-claims, so the campaign ends Claimed.
             let c = client.get_campaign(&campaign_id);
-            assert_eq!(c.status, CampaignStatus::Funded);
-            assert_eq!(c.raised_amount, 10_000_000);
+            assert_eq!(c.status, CampaignStatus::Claimed);
+            assert_eq!(c.raised_amount, 0);
         }
 
         #[test]
         fn full_flow_claim_by_beneficiary() {
-            let (env, client, campaign_id, _creator, beneficiary, donor, _admin, token_client, _) =
+            let (_env, client, campaign_id, _creator, beneficiary, donor, _admin, token_client, _) =
                 setup_funded_campaign();
 
+            let ben_before = token_client.balance(&beneficiary);
+
+            // Meeting the target auto-claims to the beneficiary within donate().
             client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
 
-            let ben_before = token_client.balance(&beneficiary);
-            let claimed = client.claim_funds(&beneficiary, &campaign_id);
-            assert_eq!(claimed, 10_000_000);
             assert_eq!(token_client.balance(&beneficiary) - ben_before, 9_900_000);
+            assert_eq!(
+                client.get_campaign(&campaign_id).status,
+                CampaignStatus::Claimed
+            );
         }
 
         #[test]
@@ -4062,25 +4073,29 @@ mod tests {
             let (env, client, campaign_id, creator, _beneficiary, donor, _admin, token_client, _) =
                 setup_funded_campaign();
 
-            client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
+            // Donate below target so the contract actually holds the funds
+            // (a target-meeting donation would auto-claim immediately).
+            client.donate(&donor, &campaign_id, &5_000_000, &false, &None);
             let contract_with_funds = token_client.balance(&client.address);
 
+            // Claiming after the deadline drains the held balance.
+            set_timestamp(&env, 10_001);
             client.claim_funds(&creator, &campaign_id);
             let contract_after_claim = token_client.balance(&client.address);
 
-            assert_eq!(contract_with_funds - contract_after_claim, 10_000_000);
+            assert_eq!(contract_with_funds - contract_after_claim, 5_000_000);
         }
 
         #[test]
         fn full_flow_fee_plus_net_equals_gross() {
-            let (env, client, campaign_id, creator, beneficiary, donor, admin, token_client, _) =
+            let (_env, client, campaign_id, _creator, beneficiary, donor, admin, token_client, _) =
                 setup_funded_campaign();
-
-            client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
 
             let ben_before = token_client.balance(&beneficiary);
             let admin_before = token_client.balance(&admin);
-            client.claim_funds(&creator, &campaign_id);
+
+            // Meeting the target auto-claims within donate().
+            client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
 
             let fee = token_client.balance(&admin) - admin_before;
             let net = token_client.balance(&beneficiary) - ben_before;
@@ -4154,15 +4169,15 @@ mod tests {
                 &None,
             );
 
+            let ben_before = token_client.balance(&beneficiary);
+
+            // Meeting the target auto-claims to the beneficiary within donate().
             client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
             let c = client.get_campaign(&campaign_id);
-            assert_eq!(c.status, CampaignStatus::Funded);
-
-            let ben_before = token_client.balance(&beneficiary);
-            let claimed = client.claim_funds(&creator, &campaign_id);
-            assert_eq!(claimed, 10_000_000);
+            assert_eq!(c.status, CampaignStatus::Claimed);
             assert_eq!(token_client.balance(&beneficiary) - ben_before, 9_900_000);
 
+            // A subsequent explicit claim must be rejected (already claimed).
             let result = client.try_claim_funds(&creator, &campaign_id);
             assert!(result.is_err(), "double-claim must fail");
         }
@@ -4245,14 +4260,10 @@ mod tests {
                 &None,
             );
 
+            // Each target-meeting donation auto-claims; the second succeeding
+            // proves the reentrancy lock is released after the first auto-claim.
             client.donate(&donor, &c1, &10_000_000, &false, &None);
             client.donate(&donor, &c2, &10_000_000, &false, &None);
-
-            let claimed1 = client.claim_funds(&creator, &c1);
-            let claimed2 = client.claim_funds(&creator, &c2);
-
-            assert_eq!(claimed1, 10_000_000);
-            assert_eq!(claimed2, 10_000_000);
 
             assert_eq!(client.get_campaign(&c1).status, CampaignStatus::Claimed);
             assert_eq!(client.get_campaign(&c2).status, CampaignStatus::Claimed);
@@ -4281,9 +4292,11 @@ mod tests {
             client.donate(&donor, &campaign_id, &30_000_000, &false, &None);
             client.donate(&donor, &campaign_id, &40_000_000, &false, &None);
 
+            // The final donation meets the target and auto-claims, so the
+            // sequential donations all succeed and the campaign ends Claimed.
             let c = client.get_campaign(&campaign_id);
-            assert_eq!(c.raised_amount, 100_000_000);
-            assert_eq!(c.status, CampaignStatus::Funded);
+            assert_eq!(c.raised_amount, 0);
+            assert_eq!(c.status, CampaignStatus::Claimed);
         }
 
         #[test]
@@ -4305,10 +4318,10 @@ mod tests {
                 &None,
             );
 
-            client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
-
             let ben_before = token_client.balance(&beneficiary);
-            client.claim_funds(&creator, &campaign_id);
+
+            // Meeting the target auto-claims to the beneficiary within donate().
+            client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
             let ben_after_first = token_client.balance(&beneficiary);
             assert_eq!(ben_after_first - ben_before, 9_900_000);
 
@@ -4338,10 +4351,14 @@ mod tests {
                 &None,
             );
 
-            client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
+            // Donate below target and claim after the deadline so the manual
+            // claim_funds path runs (a target-meeting donation would auto-claim
+            // instead, emitting an "autoclaimed" event rather than "claimed").
+            client.donate(&donor, &campaign_id, &5_000_000, &false, &None);
+            set_timestamp(&env, 10_001);
 
             let claimed = client.claim_funds(&creator, &campaign_id);
-            assert_eq!(claimed, 10_000_000);
+            assert_eq!(claimed, 5_000_000);
 
             let events = env.events().all();
             let claimed_event_exists = events.iter().any(|event| {
@@ -4418,9 +4435,15 @@ mod tests {
             let attacker = Address::generate(&env);
             let _ = client.try_claim_funds(&attacker, &campaign_id);
 
+            // After the failed claim the lock is clean, so a target-meeting
+            // donation can still auto-claim successfully.
+            let ben_before = token_client.balance(&beneficiary);
             client.donate(&donor, &campaign_id, &10_000_000, &false, &None);
-            let claimed = client.claim_funds(&creator, &campaign_id);
-            assert_eq!(claimed, 10_000_000);
+            assert_eq!(
+                client.get_campaign(&campaign_id).status,
+                CampaignStatus::Claimed
+            );
+            assert_eq!(token_client.balance(&beneficiary) - ben_before, 9_900_000);
         }
 
         #[test]
@@ -4658,10 +4681,13 @@ mod tests {
             // Public campaign should accept any donor
             client.donate(&donor, &campaign_id, &1_000_000, &false, &None);
 
-            // Turn campaign private by toggling storage directly (creator action)
-            let mut campaign = read_campaign(&env, campaign_id).unwrap();
-            campaign.is_private = true;
-            write_campaign(&env, &campaign);
+            // Turn campaign private by toggling storage directly (creator action).
+            // The internal storage helpers must run inside the contract context.
+            env.as_contract(&client.address, || {
+                let mut campaign = read_campaign(&env, campaign_id).unwrap();
+                campaign.is_private = true;
+                write_campaign(&env, &campaign);
+            });
 
             // Non-whitelisted donor should be rejected
             let another = Address::generate(&env);
@@ -4757,7 +4783,7 @@ mod tests {
 
         #[test]
         fn get_time_left_rejects_nonexistent_campaign() {
-            let (env, client, _creator, _beneficiary, _donor, _admin, _token_client, _) = setup();
+            let (_env, client, _creator, _beneficiary, _donor, _admin, _token_client, _) = setup();
 
             let result = client.try_get_time_left(&9_999u64);
             assert!(
@@ -4864,7 +4890,7 @@ mod tests {
             set_timestamp(&env, 1_000);
 
             let bens = single_ben(&env, &beneficiary);
-            let campaign_id_1 = client.create_campaign(
+            let _campaign_id_1 = client.create_campaign(
                 &creator,
                 &bens,
                 &String::from_str(&env, "Campaign 1"),
@@ -4888,7 +4914,7 @@ mod tests {
                 &token_client.address,
                 &None,
             );
-            let campaign_id_3 = client.create_campaign(
+            let _campaign_id_3 = client.create_campaign(
                 &creator,
                 &bens,
                 &String::from_str(&env, "Campaign 3"),
@@ -4901,7 +4927,7 @@ mod tests {
                 &None,
             );
 
-            client.cancel_campaign(&creator, &campaign_id_2);
+            client.cancel_campaign(&campaign_id_2);
 
             assert_eq!(client.get_total_campaigns(), 3);
         }
@@ -5420,87 +5446,6 @@ mod tests {
             &creator,
             &bens,
             &String::from_str(&env, "Blocked Campaign"),
-            &String::from_str(&env, "A sample campaign description."),
-            &String::from_str(&env, "https://example.com/meta"),
-            &symbol_short!("relief"),
-            &10_000_000,
-            &5_000,
-            &token_client.address,
-            &None,
-        );
-        assert_eq!(result, Err(Ok(ContractError::ContractPaused)));
-    }
-
-    // -----------------------------------------------------------------------
-    // Campaign Refunds
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn pause_blocks_donations() {
-        let (env, client, creator, beneficiary, donor, _admin, token_client, _) = setup();
-        set_timestamp(&env, 1_000);
-
-        let bens = single_ben(&env, &beneficiary);
-        let id = client.create_campaign(
-            &creator,
-            &bens,
-            &String::from_str(&env, "Refundable Campaign"),
-            &String::from_str(&env, "A sample campaign description."),
-            &String::from_str(&env, "https://example.com/meta"),
-            &symbol_short!("relief"),
-            &10_000_000,
-            &2_000,
-            &token_client.address,
-            &None,
-        );
-
-        // Pause the contract
-        client.pause();
-
-        // Donation should fail
-        let result = client.try_donate(&donor, &id, &1_000_000, &false, &None);
-        assert_eq!(result, Err(Ok(ContractError::ContractPaused)));
-    }
-
-    #[test]
-    fn unpause_restores_donations() {
-        let (env, client, creator, beneficiary, donor, _admin, token_client, _) = setup();
-        set_timestamp(&env, 1_000);
-
-        let bens = single_ben(&env, &beneficiary);
-        let id = client.create_campaign(
-            &creator,
-            &bens,
-            &String::from_str(&env, "Active Campaign"),
-            &String::from_str(&env, "A sample campaign description."),
-            &String::from_str(&env, "https://example.com/meta"),
-            &symbol_short!("relief"),
-            &10_000_000,
-            &2_000,
-            &token_client.address,
-            &None,
-        );
-
-        client.pause();
-        client.unpause();
-
-        // Donation should succeed again
-        let result = client.try_donate(&donor, &id, &1_000_000, &false, &None);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn pause_blocks_create_campaign() {
-        let (env, client, creator, beneficiary, _donor, _admin, token_client, _) = setup();
-        set_timestamp(&env, 1_000);
-
-        client.pause();
-
-        let bens = single_ben(&env, &beneficiary);
-        let result = client.try_create_campaign(
-            &creator,
-            &bens,
-            &String::from_str(&env, "Funded Campaign"),
             &String::from_str(&env, "A sample campaign description."),
             &String::from_str(&env, "https://example.com/meta"),
             &symbol_short!("relief"),
