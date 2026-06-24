@@ -1,9 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
-import { useDonate, useDonateFeeEstimate } from "@/hooks/useSoroban";
-import { Campaign } from "@/lib/soroban";
+import {
+  getCrossedMilestones,
+  useDonate,
+  useDonateFeeEstimate,
+  type MilestonePercent,
+} from "@/hooks/useSoroban";
+import { Campaign, toStroops } from "@/lib/soroban";
 import { useWallet } from "@/lib/WalletProvider";
 import { formatXLM } from "@/utils/format";
 import { GasWarning } from "@/components/GasWarning";
@@ -20,11 +26,28 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Check } from "lucide-react";
+import { toast } from "sonner";
 import confetti from "canvas-confetti";
 
 const MIN_DONATION_XLM = 1e-7; // 1 stroop
 
+// Session-scope dedupe so the same milestone toast can't fire twice for the
+// same campaign (e.g. React strict-mode double-render, or two donations in a
+// row where the second one doesn't cross anything new). Cleared on page
+// reload, which is the right grain for a "session" celebration.
+const FIRED_MILESTONES = new Set<string>();
+const milestoneKey = (campaignId: bigint, m: MilestonePercent) =>
+  `${campaignId.toString()}:${m}`;
+
+const MILESTONE_COPY: Record<MilestonePercent, { title: string; description: string }> = {
+  25: { title: "25% funded!", description: "First quarter milestone reached." },
+  50: { title: "Halfway there!", description: "50% of the goal funded." },
+  75: { title: "75% funded!", description: "Almost at the finish line." },
+  100: { title: "Fully funded!", description: "100% of the goal raised." },
+};
+
 export function DonateModal({ campaign }: { campaign: Campaign }) {
+  const router = useRouter();
   const { address } = useWallet();
   const {
     register,
@@ -74,6 +97,39 @@ export function DonateModal({ campaign }: { campaign: Campaign }) {
         amount: data.amount,
         isAnonymous,
       });
+      // Milestone toasts — compute crossings from `campaign.raised_amount`
+      // (the value at render time = pre-donation raised) plus the stroops
+      // we just contributed, against the campaign target. Dedupe per-session
+      // so a re-render or repeat donation can't re-fire the same milestone.
+      try {
+        const beforeStroops = campaign.raised_amount;
+        const afterStroops = beforeStroops + toStroops(data.amount);
+        for (const milestone of getCrossedMilestones(
+          beforeStroops,
+          afterStroops,
+          campaign.target_amount,
+        )) {
+          const key = milestoneKey(campaign.id, milestone);
+          if (FIRED_MILESTONES.has(key)) continue;
+          FIRED_MILESTONES.add(key);
+          const copy = MILESTONE_COPY[milestone];
+          toast.success(`${campaign.title}: ${copy.title}`, {
+            description: copy.description,
+            ...(milestone === 100
+              ? {
+                  action: {
+                    label: "View campaign",
+                    onClick: () => router.push(`/campaign/${campaign.id.toString()}`),
+                  },
+                }
+              : {}),
+          });
+        }
+      } catch (milestoneErr) {
+        // Milestone UI is non-critical — never let a toast failure mask the
+        // successful donation flow.
+        console.error("Failed to compute milestone toasts", milestoneErr);
+      }
       setSuccessAmount(data.amount);
       setSuccessTxHash((result as any).hash || "");
       setShowSuccess(true);

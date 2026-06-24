@@ -40,6 +40,35 @@ export function useCampaignsPaged(limit: number) {
 
 import { toast } from "sonner";
 
+/**
+ * Funding milestones (percent of target) that trigger a celebratory toast.
+ * Order matters — callers iterate in ascending order so multiple thresholds
+ * crossed by a single donation fire in the right sequence.
+ */
+export const MILESTONE_PERCENTS = [25, 50, 75, 100] as const;
+export type MilestonePercent = (typeof MILESTONE_PERCENTS)[number];
+
+/**
+ * Returns the milestone thresholds (25, 50, 75, 100) that the raised amount
+ * crossed when moving from `beforeStroops` to `afterStroops` for a campaign
+ * with `targetStroops` as its target. A threshold is "crossed" when the
+ * before-percentage is strictly below it and the after-percentage is at or
+ * above it. Returns an empty array for non-positive targets (defensive — the
+ * contract rejects those at create time).
+ */
+export function getCrossedMilestones(
+  beforeStroops: bigint,
+  afterStroops: bigint,
+  targetStroops: bigint,
+): MilestonePercent[] {
+  if (targetStroops <= 0n) return [];
+  // Scale before dividing so we don't lose precision converting i128-sized
+  // bigints to Number. Result is percentage with two decimal places.
+  const pctBefore = Number((beforeStroops * 10_000n) / targetStroops) / 100;
+  const pctAfter = Number((afterStroops * 10_000n) / targetStroops) / 100;
+  return MILESTONE_PERCENTS.filter((m) => pctBefore < m && pctAfter >= m);
+}
+
 function mapTransactionError(error: any): string {
   const msg = error?.message || String(error);
   if (
