@@ -103,6 +103,7 @@ docs/                    Security, deployment, architecture, contributing docs
 - Security: [`docs/SECURITY.md`](./docs/SECURITY.md)
 - Deployment: [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)
 - Contributing: [`docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md)
+- Branch Protection: [`docs/branch-protection.md`](./docs/branch-protection.md)
 - Video Transcript: [`docs/VIDEO_TRANSCRIPT.md`](./docs/VIDEO_TRANSCRIPT.md)
 - Litepaper: [`docs/WHITEPAPER.md`](./docs/WHITEPAPER.md)
 
@@ -113,6 +114,8 @@ docs/                    Security, deployment, architecture, contributing docs
 - **WASM optimization:** Contract builds are strictly validated to ensure optimized `.wasm` size remains under 64KB.
 - **Local Soroban node:** We support local-first Soroban development using `stellar/quickstart:testing`. Run `docker compose up` to start a standalone node (RPC on port 8000, Horizon on port 8001).
 - **Dependabot maintenance:** Weekly dependency updates are enabled for both Cargo (contracts) and NPM (frontend) dependencies.
+- **Branch protection:** The `main` branch is protected by mandatory status checks (`Contract CI`, `Lint & Format`, `CI`, `Dependency Audit`). Admins/owners can bypass checks in emergencies. See [Branch Protection Guide](./docs/branch-protection.md) or run `bash scripts/apply-branch-protection.sh` to apply.
+
 
 ## Roadmap
 
