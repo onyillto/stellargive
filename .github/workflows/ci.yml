@@ -144,3 +144,22 @@ jobs:
           directory: frontend/coverage
           flags: frontend
           token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Build (with Sentry sourcemap upload)
+        working-directory: frontend
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_RELEASE: ${{ github.sha }}
+        run: npm run build
+
+      - name: Finalize Sentry release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          npx sentry-cli releases set-commits ${{ github.sha }} --auto
+          npx sentry-cli releases finalize ${{ github.sha }}
