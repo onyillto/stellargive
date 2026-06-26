@@ -11,18 +11,17 @@ const nextConfig = {
 };
 
 export default withBundleAnalyzer(
-  withSentryConfig(
-    nextConfig,
-    {
-      silent: true,
-      org: process.env.SENTRY_ORG,
-      project: process.env.SENTRY_PROJECT,
+  withSentryConfig(nextConfig, {
+    silent: true,
+    org: process.env.SENTRY_ORG,
+    project: process.env.SENTRY_PROJECT,
+    authToken: process.env.SENTRY_AUTH_TOKEN,
+    release: process.env.SENTRY_RELEASE,
+    widenClientFileUpload: true,
+    hideSourceMaps: true,
+    disableLogger: true,
+    sourcemaps: {
+      disable: !process.env.SENTRY_AUTH_TOKEN,
     },
-    {
-      widenClientFileUpload: true,
-      transpileClientSDK: true,
-      hideSourceMaps: true,
-      disableLogger: true,
-    },
-  ),
+  }),
 );
