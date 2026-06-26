@@ -12,6 +12,7 @@ import {
   getEvents,
   getUpdates,
   getTotalCampaigns,
+  resolveAddressName,
 } from "@/lib/soroban";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { Address, nativeToScVal } from "@stellar/stellar-sdk";
@@ -252,6 +253,71 @@ export function useClaimFunds() {
   });
 }
 
+export function useClaimRefund() {
+  const { address } = useWallet();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (campaignId: bigint) => {
+      if (!address) throw new Error("Wallet not connected");
+
+      const args = [new Address(address).toScVal(), nativeToScVal(campaignId, { type: "u64" })];
+
+      return submitTransaction(address, "claim_refund", args);
+    },
+    onMutate: () => {
+      const toastId = toast.loading("Claiming refund...");
+      return { toastId };
+    },
+    onSuccess: (data: any, campaignId, context) => {
+      const action = data?.hash
+        ? {
+            label: "View Explorer",
+            onClick: () =>
+              window.open(`https://stellar.expert/explorer/testnet/tx/${data.hash}`, "_blank"),
+          }
+        : undefined;
+      const message = "Refund claimed successfully";
+      if (context?.toastId) {
+        toast.success(message, { id: context.toastId, action });
+      } else {
+        toast.success(message, { action });
+      }
+      queryClient.invalidateQueries({ queryKey: ["campaign", campaignId.toString()] });
+      queryClient.invalidateQueries({ queryKey: ["refund-eligibility", campaignId.toString()] });
+    },
+    onError: (error: any, _variables, context) => {
+      if (context?.toastId) {
+        toast.error("Unable to claim refund. Please try again.", { id: context.toastId });
+      } else {
+        toast.error("Unable to claim refund. Please try again.");
+      }
+    },
+  });
+}
+
+export function useRefundEligibility(campaignId: bigint, isCancelled: boolean) {
+  const { address } = useWallet();
+  return useQuery({
+    queryKey: ["refund-eligibility", campaignId.toString(), address],
+    queryFn: async () => {
+      if (!address || !isCancelled) return false;
+      try {
+        const args = [
+          new Address(address).toScVal(),
+          nativeToScVal(campaignId, { type: "u64" }),
+        ];
+        const fee = await estimateFee(address, "claim_refund", args);
+        return fee !== null;
+      } catch {
+        return false;
+      }
+    },
+    enabled: !!address && isCancelled,
+    staleTime: 60_000,
+  });
+}
+
 export function usePlatformStats() {
   return useQuery({
     queryKey: ["platform-stats"],
@@ -388,3 +454,20 @@ export function useCancelCampaign() {
     },
   });
 }
+
+/**
+ * Hook to resolve a Soroban Domain name for an address with caching.
+ * Returns the domain name if available, otherwise returns null.
+ * Never blocks render - resolution happens asynchronously.
+ */
+export function useResolvedName(address: string | null) {
+  return useQuery({
+    queryKey: ["resolved-name", address],
+    queryFn: () => (address ? resolveAddressName(address) : null),
+    enabled: !!address && address.length === 56,
+    staleTime: 1000 * 60 * 60, // Cache for 1 hour
+    gcTime: 1000 * 60 * 60 * 24, // Keep in cache for 24 hours
+    retry: false, // Don't retry on failure
+  });
+}
+
