@@ -127,5 +127,20 @@ When contributing, please follow our [Pull Request Template](#pull-request-templ
 
 ## 9. Pre-commit Hooks
 
-We use Husky and `lint-staged` to automatically check modified files before every commit.
-Run `npm run prepare` at the repository root to initialize the hooks. Once installed, `lint-staged` will run prettier, eslint, and cargo fmt checks automatically on commit.
+We use Husky and `lint-staged` to automatically format and lint modified files before every commit. The hook runs only on staged files for speed.
+
+**What runs:**
+- **Frontend files** (`frontend/**/*.{js,jsx,ts,tsx}`): Prettier formats and ESLint fixes
+- **Rust files** (`contracts/**/*.rs`): `cargo fmt` formats the code
+
+**Setup:** Run `npm run prepare` at the repository root to initialize the hooks.
+
+**Emergency skip:** Use `git commit --no-verify` to bypass the hook when necessary.
+
+## 10. EditorConfig
+
+An `.editorconfig` file enforces consistent formatting across editors (UTF-8, LF line endings, trailing whitespace trimming, and indentation per file type). Most editors respect it automatically; install a plugin if yours doesn't.
+
+## 11. Secret Scanning
+
+Gitleaks runs on every PR and push to `main` to prevent committed secrets. If a scan flags a false positive, add an allowlist entry in `.gitleaks.toml` with a comment explaining why.
