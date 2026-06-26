@@ -257,3 +257,13 @@ export function useAddUpdate() {
     },
   });
 }
+
+export async function addUpdate(campaignId: bigint, content: string): Promise<void> {
+  const { address } = useWallet();
+  if (!address) throw new Error("Wallet not connected");
+  const args = [
+    nativeToScVal(campaignId, { type: "u64" }),
+    nativeToScVal(content, { type: "string" }),
+  ];
+  await submitTransaction(address, "add_update", args);
+}
