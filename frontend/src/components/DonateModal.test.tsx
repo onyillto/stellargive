@@ -6,13 +6,15 @@ import type { Campaign } from "@/lib/soroban";
 
 expect.extend(toHaveNoViolations);
 
-// Mock useDonate hook
 vi.mock("@/hooks/useSoroban", () => ({
   useDonate: () => ({
     mutateAsync: vi.fn(),
     isPending: false,
     isSuccess: false,
   }),
+  useDonateFeeEstimate: () => ({ data: null }),
+  useWalletBalance: () => ({ data: null, isLoading: false }),
+  getCrossedMilestones: () => [],
 }));
 
 const baseCampaign: Campaign = {
@@ -69,5 +71,33 @@ describe("DonateModal", () => {
     const dialog = screen.getByRole("dialog");
     const results = await axe(dialog);
     expect(results).toHaveNoViolations();
+  });
+
+  it("disables submit when amount is below minimum donation", async () => {
+    render(<DonateModal campaign={baseCampaign} />);
+    fireEvent.click(screen.getByRole("button", { name: /Donate Now/i }));
+
+    const input = await screen.findByLabelText(/Amount/i);
+    fireEvent.change(input, { target: { value: "0" } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      const confirmBtn = screen.getByRole("button", { name: /Confirm Donation/i });
+      expect(confirmBtn).toBeDisabled();
+    });
+  });
+
+  it("shows an error when amount exceeds remaining goal", async () => {
+    render(<DonateModal campaign={baseCampaign} />);
+    fireEvent.click(screen.getByRole("button", { name: /Donate Now/i }));
+
+    const input = await screen.findByLabelText(/Amount/i);
+    // remaining = 100 - 35 = 65 XLM; enter 200
+    fireEvent.change(input, { target: { value: "200" } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(screen.getByText(/exceeds the remaining goal/i)).toBeInTheDocument();
+    });
   });
 });

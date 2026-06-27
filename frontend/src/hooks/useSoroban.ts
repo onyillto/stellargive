@@ -12,6 +12,7 @@ import {
   getEvents,
   getUpdates,
   getTotalCampaigns,
+  getSACBalance,
   resolveAddressName,
 } from "@/lib/soroban";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -452,6 +453,19 @@ export function useCancelCampaign() {
         toast.error(mappedError);
       }
     },
+  });
+}
+
+export function useWalletBalance(tokenContractId: string | null | undefined, address: string | null) {
+  return useQuery({
+    queryKey: ["wallet-balance", tokenContractId, address],
+    queryFn: async () => {
+      if (!tokenContractId || !address) return null;
+      return getSACBalance(tokenContractId, address);
+    },
+    enabled: !!tokenContractId && !!address,
+    staleTime: 30_000,
+    retry: false,
   });
 }
 
