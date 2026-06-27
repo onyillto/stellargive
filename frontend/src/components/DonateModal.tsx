@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import {
@@ -78,8 +78,17 @@ export function DonateModal({ campaign, open: openProp, onOpenChange, }: { campa
   });
   const amount = watch("amount");
 
-  const target = Number(campaign.target_amount) / 1e7;
-  const raised = Number(campaign.raised_amount) / 1e7;
+  const donate = useDonate();
+
+  // Freeze the campaign state while donating so the UI doesn't jump due to optimistic updates
+  const frozenCampaignRef = React.useRef(campaign);
+  if (!donate.isPending) {
+    frozenCampaignRef.current = campaign;
+  }
+  const displayCampaign = frozenCampaignRef.current;
+
+  const target = Number(displayCampaign.target_amount) / 1e7;
+  const raised = Number(displayCampaign.raised_amount) / 1e7;
   const remaining = Math.max(target - raised, 0);
   const liveRemaining = Math.max(remaining - (Number(amount) || 0), 0);
   const canFundRest = remaining >= MIN_DONATION_XLM && (Number(amount) || 0) < remaining;
@@ -97,7 +106,6 @@ export function DonateModal({ campaign, open: openProp, onOpenChange, }: { campa
   const [successAmount, setSuccessAmount] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const donate = useDonate();
   const feeEstimate = useDonateFeeEstimate({
     campaignId: campaign.id,
     amount,
