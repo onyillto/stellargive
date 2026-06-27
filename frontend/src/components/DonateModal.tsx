@@ -7,6 +7,7 @@ import {
   getCrossedMilestones,
   useDonate,
   useDonateFeeEstimate,
+  useWalletBalance,
   type MilestonePercent,
 } from "@/hooks/useSoroban";
 import { Campaign, toStroops } from "@/lib/soroban";
@@ -25,16 +26,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Check } from "lucide-react";
+import { Loader2, Check, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
 
 const MIN_DONATION_XLM = 1e-7; // 1 stroop
 
-// Session-scope dedupe so the same milestone toast can't fire twice for the
-// same campaign (e.g. React strict-mode double-render, or two donations in a
-// row where the second one doesn't cross anything new). Cleared on page
-// reload, which is the right grain for a "session" celebration.
 const FIRED_MILESTONES = new Set<string>();
 const milestoneKey = (campaignId: bigint, m: MilestonePercent) =>
   `${campaignId.toString()}:${m}`;
@@ -46,6 +43,24 @@ const MILESTONE_COPY: Record<MilestonePercent, { title: string; description: str
   100: { title: "Fully funded!", description: "100% of the goal raised." },
 };
 
+function mapOnChainError(error: any): string | null {
+  const msg = (error?.message || String(error)).trim();
+  if (
+    msg.includes("User declined") ||
+    msg.includes("cancelled") ||
+    msg.includes("User rejected")
+  ) {
+    return null; // user-initiated, no inline error needed
+  }
+  if (msg.includes("Simulation failed") || msg.includes("Transaction failed")) {
+    return "The transaction was rejected on-chain. Check the donation amount and try again.";
+  }
+  if (msg.includes("Network Error") || msg.includes("Failed to fetch") || msg.includes("Send failed")) {
+    return "Network error — please check your connection and try again.";
+  }
+  return "Something went wrong. Please try again.";
+}
+
 export function DonateModal({ campaign, open: openProp, onOpenChange, }: { campaign: Campaign; open?: boolean; onOpenChange?: (open: boolean) => void; }) {
   const router = useRouter();
   const { address, isWrongNetwork } = useWallet();
@@ -54,20 +69,21 @@ export function DonateModal({ campaign, open: openProp, onOpenChange, }: { campa
     handleSubmit,
     watch,
     setValue,
+    trigger,
     formState: { errors, isValid },
     clearErrors,
-    setError,
   } = useForm<{ amount: string }>({
     mode: "onChange",
     defaultValues: { amount: "" },
   });
   const amount = watch("amount");
-  // Calculate remaining goal
+
   const target = Number(campaign.target_amount) / 1e7;
   const raised = Number(campaign.raised_amount) / 1e7;
   const remaining = Math.max(target - raised, 0);
   const liveRemaining = Math.max(remaining - (Number(amount) || 0), 0);
   const canFundRest = remaining >= MIN_DONATION_XLM && (Number(amount) || 0) < remaining;
+
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [internalOpen, setInternalOpen] = useState(false);
   const isControlled = openProp !== undefined;
@@ -79,34 +95,44 @@ export function DonateModal({ campaign, open: openProp, onOpenChange, }: { campa
   const [showSuccess, setShowSuccess] = useState(false);
   const [successTxHash, setSuccessTxHash] = useState("");
   const [successAmount, setSuccessAmount] = useState("");
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   const donate = useDonate();
   const feeEstimate = useDonateFeeEstimate({
     campaignId: campaign.id,
     amount,
     address,
   });
+  const walletBalance = useWalletBalance(campaign.accepted_token, address);
+  const balanceXLM = walletBalance.data != null ? Number(walletBalance.data) / 1e7 : null;
+
+  // Re-run validation when balance loads so the balance error appears immediately.
+  useEffect(() => {
+    if (balanceXLM !== null && amount && Number(amount) > 0) {
+      trigger("amount");
+    }
+  }, [balanceXLM, trigger]);
+
+  // Clear inline submit error whenever the user edits the amount.
+  useEffect(() => {
+    if (submitError) setSubmitError(null);
+  }, [amount]);
 
   useEffect(() => {
     if (donate.isSuccess) {
-      confetti({
-        spread: 90,
-        particleCount: 100,
-      });
+      confetti({ spread: 90, particleCount: 100 });
     }
   }, [donate.isSuccess]);
 
   const onSubmit = async (data: { amount: string }) => {
     if (donate.isPending) return;
+    setSubmitError(null);
     try {
       const result = await donate.mutateAsync({
         campaignId: campaign.id,
         amount: data.amount,
         isAnonymous,
       });
-      // Milestone toasts — compute crossings from `campaign.raised_amount`
-      // (the value at render time = pre-donation raised) plus the stroops
-      // we just contributed, against the campaign target. Dedupe per-session
-      // so a re-render or repeat donation can't re-fire the same milestone.
       try {
         const beforeStroops = campaign.raised_amount;
         const afterStroops = beforeStroops + toStroops(data.amount);
@@ -132,8 +158,6 @@ export function DonateModal({ campaign, open: openProp, onOpenChange, }: { campa
           });
         }
       } catch (milestoneErr) {
-        // Milestone UI is non-critical — never let a toast failure mask the
-        // successful donation flow.
         console.error("Failed to compute milestone toasts", milestoneErr);
       }
       setSuccessAmount(data.amount);
@@ -144,6 +168,8 @@ export function DonateModal({ campaign, open: openProp, onOpenChange, }: { campa
       setIsAnonymous(false);
     } catch (e: any) {
       console.error(e);
+      const inlineMsg = mapOnChainError(e);
+      if (inlineMsg) setSubmitError(inlineMsg);
     }
   };
 
@@ -154,6 +180,10 @@ export function DonateModal({ campaign, open: openProp, onOpenChange, }: { campa
         onOpenChange={(open) => {
           if (!donate.isPending) {
             setIsOpen(open);
+            if (!open) {
+              setSubmitError(null);
+              clearErrors();
+            }
           }
         }}
       >
@@ -163,10 +193,10 @@ export function DonateModal({ campaign, open: openProp, onOpenChange, }: { campa
         <DialogContent
           aria-labelledby="donate-dialog-title"
           onPointerDownOutside={(e) => {
-            if (donate.isPending) e.preventDefault(); // lock UI until resolution
+            if (donate.isPending) e.preventDefault();
           }}
           onEscapeKeyDown={(e) => {
-            if (donate.isPending) e.preventDefault(); // lock UI until resolution
+            if (donate.isPending) e.preventDefault();
           }}
         >
           <DialogHeader>
@@ -200,7 +230,7 @@ export function DonateModal({ campaign, open: openProp, onOpenChange, }: { campa
                 autoComplete="off"
                 placeholder="10.0"
                 aria-invalid={errors.amount ? "true" : "false"}
-                aria-describedby={errors.amount ? "amount-error" : undefined}
+                aria-describedby={errors.amount ? "amount-error" : "amount-hint"}
                 {...register("amount", {
                   required: "Amount is required",
                   pattern: {
@@ -208,25 +238,38 @@ export function DonateModal({ campaign, open: openProp, onOpenChange, }: { campa
                     message: "Enter a valid number",
                   },
                   validate: (value) => {
-                    if (isNaN(Number(value))) return "Enter a valid number";
-                    if (Number(value) <= 0) return "Amount must be greater than zero";
-                    if (Number(value) > remaining) return "This exceeds the remaining goal";
+                    const num = Number(value);
+                    if (isNaN(num)) return "Enter a valid number";
+                    const parts = value.split(".");
+                    if (parts.length > 1 && parts[1].length > 7) return "Maximum 7 decimal places";
+                    if (num < MIN_DONATION_XLM) return "Minimum donation is 0.0000001 XLM (1 stroop)";
+                    if (num > remaining) return "This exceeds the remaining goal";
+                    if (balanceXLM !== null && num > balanceXLM)
+                      return `Insufficient balance — you have ${formatXLM(balanceXLM)} XLM`;
                     return true;
                   },
                 })}
                 disabled={donate.isPending}
               />
-              <span
-                className="text-xs text-muted-foreground"
-                role="status"
-                aria-live="polite"
-              >
-                {liveRemaining > 0
-                  ? `${formatXLM(liveRemaining)} XLM left to reach the goal`
-                  : amount && Number(amount) > 0
-                    ? "This will fully fund the campaign!"
-                    : `${formatXLM(remaining)} XLM left to reach the goal`}
-              </span>
+              <div className="flex items-center justify-between">
+                <span
+                  id="amount-hint"
+                  className="text-xs text-muted-foreground"
+                  role="status"
+                  aria-live="polite"
+                >
+                  {liveRemaining > 0
+                    ? `${formatXLM(liveRemaining)} XLM left to reach the goal`
+                    : amount && Number(amount) > 0
+                      ? "This will fully fund the campaign!"
+                      : `${formatXLM(remaining)} XLM left to reach the goal`}
+                </span>
+                {balanceXLM !== null && (
+                  <span className="text-xs text-muted-foreground">
+                    Balance: {formatXLM(balanceXLM)} XLM
+                  </span>
+                )}
+              </div>
               {errors.amount && (
                 <span
                   id="amount-error"
@@ -235,11 +278,6 @@ export function DonateModal({ campaign, open: openProp, onOpenChange, }: { campa
                   aria-live="polite"
                 >
                   {errors.amount.message}
-                </span>
-              )}
-              {!errors.amount && amount && Number(amount) > remaining && (
-                <span className="text-xs text-yellow-600 mt-1" role="status" aria-live="polite">
-                  This exceeds the remaining goal
                 </span>
               )}
             </div>
@@ -268,6 +306,15 @@ export function DonateModal({ campaign, open: openProp, onOpenChange, }: { campa
           </div>
           {feeEstimate.data != null && (
             <GasWarning estimatedFeeStroops={feeEstimate.data} />
+          )}
+          {submitError && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{submitError}</span>
+            </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsOpen(false)} disabled={donate.isPending}>
