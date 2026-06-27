@@ -14,6 +14,7 @@ import { Calendar, Target, TrendingUp } from "lucide-react";
 import { ShareButton } from "@/components/ShareButton";
 import { AddressLink } from "@/components/AddressLink";
 import { RelativeTime } from "@/components/RelativeTime";
+import { CampaignStatusBadge } from "@/components/CampaignStatusBadge";
 
 function calculateProgress(raised: bigint, target: bigint): number {
   if (target === 0n) return 0;
@@ -39,17 +40,7 @@ export function CampaignCard({ campaign }: { campaign: Campaign }) {
     <Card className="flex flex-col group hover:border-primary/50 transition-all duration-300">
       <CardHeader>
         <div className="flex justify-between items-start mb-2">
-          <div
-            className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
-              campaign.status === "Active"
-                ? "bg-green-500/20 text-green-500"
-                : campaign.status === "Funded"
-                  ? "bg-blue-500/20 text-blue-500"
-                  : "bg-muted text-muted-foreground"
-            }`}
-          >
-            {campaign.status}
-          </div>
+          <CampaignStatusBadge status={campaign.status} deadline={campaign.deadline} />
         </div>
         <CardTitle className="line-clamp-1 group-hover:text-primary transition-colors">
           {campaign.title}

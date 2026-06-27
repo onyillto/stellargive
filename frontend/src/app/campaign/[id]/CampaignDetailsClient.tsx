@@ -33,6 +33,7 @@ import { sanitizeUrl } from "@/lib/sanitize";
 import { RefundButton } from "@/components/RefundButton";
 import { TopDonors } from "@/components/TopDonors";
 import { StickyDonateBar } from "@/components/StickyDonateBar";
+import { CampaignStatusBadge } from "@/components/CampaignStatusBadge";
 
 export function CampaignDetailsClient({ params }: { params: { id: string } }) {
   const { address, isWrongNetwork } = useWallet();
@@ -47,13 +48,18 @@ export function CampaignDetailsClient({ params }: { params: { id: string } }) {
     <div className="p-8 max-w-4xl mx-auto space-y-6">
       <div className="flex justify-between items-start">
         <div className="space-y-2">
-          <h1 className="text-3xl font-bold">
-            {isLoading ? (
-              <Skeleton className="h-9 w-64" />
-            ) : (
-              campaign?.title || `Campaign #${params.id}`
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">
+              {isLoading ? (
+                <Skeleton className="h-9 w-64" />
+              ) : (
+                campaign?.title || `Campaign #${params.id}`
+              )}
+            </h1>
+            {!isLoading && campaign && (
+              <CampaignStatusBadge status={campaign.status} deadline={campaign.deadline} />
             )}
-          </h1>
+          </div>
           {!isLoading && campaign && (
             <div className="flex flex-wrap gap-4 text-sm text-muted-foreground pt-1">
               <span className="inline-flex items-center gap-2">
