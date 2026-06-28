@@ -308,6 +308,7 @@ export async function getEvents(limit = 20) {
       createdAt: event.ledgerClosedAt,
       topic: topics[1], // e.g., 'created', 'received', 'claimed'
       data: value,
+      txHash: (event as any).txHash as string | undefined,
     };
   });
 }

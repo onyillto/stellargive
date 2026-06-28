@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useEvents } from "@/hooks/useSoroban";
 import { fromStroops } from "@/lib/soroban";
+import { getStellarExpertTxUrl } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -109,6 +110,20 @@ export function EventFeed() {
                 <span>{event.topic}</span>
                 <span>•</span>
                 <span>Ledger {event.ledger}</span>
+                {event.txHash && (
+                  <>
+                    <span>•</span>
+                    <a
+                      href={getStellarExpertTxUrl(event.txHash)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:text-primary transition-colors normal-case tracking-normal font-normal"
+                      aria-label="Verify transaction on StellarExpert"
+                    >
+                      Verify ↗
+                    </a>
+                  </>
+                )}
               </div>
             </div>
           </div>
