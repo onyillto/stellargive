@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,11 +39,30 @@ function campaignId(value: unknown): string | null {
 }
 
 export default function ActivityPage() {
-  const { data: events, isLoading, isError } = useEvents(HISTORY_LIMIT);
+  const { data: fetchedEvents, isLoading, isError } = useEvents(HISTORY_LIMIT);
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [events, setEvents] = useState<any[]>([]);
+  const [showIndicator, setShowIndicator] = useState(false);
+
+  useEffect(() => {
+    if (fetchedEvents) {
+      setEvents((prev) => {
+        const existingIds = new Set(prev.map((e) => e.id));
+        const newEvents = fetchedEvents.filter((e: any) => !existingIds.has(e.id));
+        if (newEvents.length > 0) {
+          if (prev.length > 0) {
+            setShowIndicator(true);
+            setTimeout(() => setShowIndicator(false), 4000);
+          }
+          return [...newEvents, ...prev];
+        }
+        return prev;
+      });
+    }
+  }, [fetchedEvents]);
 
   const sorted = useMemo(
-    () => (events ?? []).slice().sort((a: any, b: any) => Number(b.ledger) - Number(a.ledger)),
+    () => events.slice().sort((a: any, b: any) => Number(b.ledger) - Number(a.ledger)),
     [events],
   );
 
@@ -80,11 +99,11 @@ export default function ActivityPage() {
           ))}
         </div>
 
-        {isLoading ? (
+        {isLoading && events.length === 0 ? (
           <div className="flex justify-center py-20">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : isError ? (
+        ) : isError && events.length === 0 ? (
           <div className="text-center py-20 text-red-500">Unable to load on-chain events.</div>
         ) : visible.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
@@ -92,13 +111,20 @@ export default function ActivityPage() {
             events found yet.
           </div>
         ) : (
-          <Card>
-            <CardContent className="divide-y p-0">
-              {visible.map((event: any) => (
-                <ActivityRow key={event.id} event={event} />
-              ))}
-            </CardContent>
-          </Card>
+          <div className="relative">
+            {showIndicator && (
+              <div className="absolute -top-12 left-1/2 -translate-x-1/2 z-10 bg-primary text-primary-foreground px-4 py-1.5 rounded-full text-sm font-medium shadow-md animate-in fade-in slide-in-from-top-4 duration-300">
+                New activity
+              </div>
+            )}
+            <Card>
+              <CardContent className="divide-y p-0">
+                {visible.map((event: any) => (
+                  <ActivityRow key={event.id} event={event} />
+                ))}
+              </CardContent>
+            </Card>
+          </div>
         )}
       </main>
     </div>

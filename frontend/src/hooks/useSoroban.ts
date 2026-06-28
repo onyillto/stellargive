@@ -391,7 +391,16 @@ export function useEvents(limit = 20) {
   return useQuery({
     queryKey: ["events", limit],
     queryFn: () => getEvents(limit),
-    refetchInterval: 10_000,
+    refetchInterval: (query) => {
+      if (typeof document !== "undefined" && document.hidden) {
+        return false;
+      }
+      if (query.state.status === "error") {
+        const failureCount = query.state.fetchFailureCount;
+        return Math.min(10000 * Math.pow(2, failureCount), 60000);
+      }
+      return 10000;
+    },
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   });
