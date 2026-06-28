@@ -7,6 +7,14 @@ import { MockWalletProvider } from "@/components/MockWalletProvider";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "next-themes";
 import { NetworkMismatchBanner } from "@/components/NetworkMismatchBanner";
+import dynamic from "next/dynamic";
+
+const CommandPalette = dynamic(
+  () => import("@/components/CommandPalette").then((mod) => mod.CommandPalette),
+  {
+    ssr: false,
+  },
+);
 
 const queryClient = new QueryClient();
 
@@ -28,6 +36,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <NetworkMismatchBanner />
           {children}
           <Toaster position="top-center" richColors />
+          <CommandPalette />
         </ActiveWalletProvider>
       </QueryClientProvider>
     </ThemeProvider>

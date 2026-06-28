@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { Footer } from "@/components/Footer";
+import { ConsentBanner } from "@/components/ConsentBanner";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           {children}
           <Footer />
+          <ConsentBanner />
         </Providers>
       </body>
     </html>
