@@ -37,10 +37,7 @@ describe("EventFeed — loading state", () => {
     vi.mocked(useEvents).mockReturnValue({ data: undefined, isLoading: true } as any);
     render(<EventFeed />);
     expect(screen.getByText(/Recent Activity/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Loading recent activity/i)).toHaveAttribute(
-      "aria-busy",
-      "true",
-    );
+    expect(screen.getByLabelText(/Loading recent activity/i)).toHaveAttribute("aria-busy", "true");
   });
 
   it("does not render the empty-state copy in the loading state", () => {

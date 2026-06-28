@@ -111,9 +111,7 @@ describe("useSoroban", () => {
 
       renderHook(() => useCampaign(42n), { wrapper: Wrapper });
 
-      await waitFor(() =>
-        expect(queryClient.getQueryState(["campaign", "42"])).toBeDefined(),
-      );
+      await waitFor(() => expect(queryClient.getQueryState(["campaign", "42"])).toBeDefined());
     });
 
     it("exposes the error when getCampaign rejects", async () => {

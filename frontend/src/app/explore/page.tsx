@@ -189,16 +189,20 @@ function ExploreContent() {
         </div>
 
         {/* Status filters */}
-        <div className="flex flex-wrap gap-2 items-center" role="tablist" aria-label="Campaign status filters">
+        <div
+          className="flex flex-wrap gap-2 items-center"
+          role="tablist"
+          aria-label="Campaign status filters"
+        >
           <button
             onClick={() => setStatusFilter("all")}
             role="tab"
             aria-selected={statusFilter === "all"}
             className="focus:outline-none"
           >
-            <CampaignStatusBadge 
-              status="All" 
-              className={`text-sm px-4 py-1.5 transition-opacity ${statusFilter === "all" ? "ring-2 ring-primary ring-offset-2 opacity-100" : "opacity-60 hover:opacity-100"}`} 
+            <CampaignStatusBadge
+              status="All"
+              className={`text-sm px-4 py-1.5 transition-opacity ${statusFilter === "all" ? "ring-2 ring-primary ring-offset-2 opacity-100" : "opacity-60 hover:opacity-100"}`}
             />
           </button>
           <button
@@ -207,9 +211,9 @@ function ExploreContent() {
             aria-selected={statusFilter === "active"}
             className="focus:outline-none"
           >
-            <CampaignStatusBadge 
-              status="Active" 
-              className={`text-sm px-4 py-1.5 transition-opacity ${statusFilter === "active" ? "ring-2 ring-primary ring-offset-2 opacity-100" : "opacity-60 hover:opacity-100"}`} 
+            <CampaignStatusBadge
+              status="Active"
+              className={`text-sm px-4 py-1.5 transition-opacity ${statusFilter === "active" ? "ring-2 ring-primary ring-offset-2 opacity-100" : "opacity-60 hover:opacity-100"}`}
             />
           </button>
           <button
@@ -218,9 +222,9 @@ function ExploreContent() {
             aria-selected={statusFilter === "funded"}
             className="focus:outline-none"
           >
-            <CampaignStatusBadge 
-              status="Funded" 
-              className={`text-sm px-4 py-1.5 transition-opacity ${statusFilter === "funded" ? "ring-2 ring-primary ring-offset-2 opacity-100" : "opacity-60 hover:opacity-100"}`} 
+            <CampaignStatusBadge
+              status="Funded"
+              className={`text-sm px-4 py-1.5 transition-opacity ${statusFilter === "funded" ? "ring-2 ring-primary ring-offset-2 opacity-100" : "opacity-60 hover:opacity-100"}`}
             />
           </button>
         </div>

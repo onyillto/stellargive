@@ -2,6 +2,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useCampaign, useCancelCampaign } from "@/hooks/useSoroban";
 import { useWallet } from "@/lib/WalletProvider";
 import { ShareButton } from "@/components/ShareButton";
@@ -34,10 +35,11 @@ const DonateModal = dynamic(
 import { AddressLink } from "@/components/AddressLink";
 import { sanitizeUrl } from "@/lib/sanitize";
 import { RefundButton } from "@/components/RefundButton";
-import { TopDonors } from "@/components/TopDonors";
 import { StickyDonateBar } from "@/components/StickyDonateBar";
 import { CampaignStatusBadge } from "@/components/CampaignStatusBadge";
 import { useCountdown } from "@/hooks/useCountdown";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
+import { fromStroops } from "@/lib/soroban";
 
 export function CampaignDetailsClient({ params }: { params: { id: string } }) {
   const [imgError, setImgError] = useState(false);
@@ -52,6 +54,13 @@ export function CampaignDetailsClient({ params }: { params: { id: string } }) {
 
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-6">
+      <Breadcrumbs
+        items={[
+          { label: "Home", href: "/" },
+          { label: "Explore", href: "/explore" },
+          { label: campaign?.title || `Campaign #${params.id}`, href: `/campaign/${params.id}` },
+        ]}
+      />
       <div className="flex justify-between items-start">
         <div className="space-y-2">
           <div className="flex items-center gap-3">
@@ -98,16 +107,16 @@ export function CampaignDetailsClient({ params }: { params: { id: string } }) {
               )}
               {campaign.status === "Active" && (
                 <span className="inline-flex items-center gap-1 font-medium text-orange-500">
-                  ⏱️ {countdown.isEnded ? "Ended" : `${countdown.days}d ${countdown.hours}h ${countdown.minutes}m left`}
+                  ⏱️{" "}
+                  {countdown.isEnded
+                    ? "Ended"
+                    : `${countdown.days}d ${countdown.hours}h ${countdown.minutes}m left`}
                 </span>
               )}
             </div>
           )}
         </div>
         <div className="flex items-center gap-3">
-          {campaign?.status === "Cancelled" && (
-            <RefundButton campaignId={campaign.id} isCancelled={true} />
-          )}
           {campaign && <ShareButton campaign={campaign} />}
         </div>
       </div>
@@ -118,10 +127,15 @@ export function CampaignDetailsClient({ params }: { params: { id: string } }) {
             <div className="space-y-6">
               <div className="relative aspect-video w-full bg-muted rounded-xl overflow-hidden border">
                 {getCampaignImageUrl(campaign.metadata_uri) && !imgError ? (
-                  <img
-                    src={getCampaignImageUrl(campaign.metadata_uri)}
+                  <Image
+                    src={getCampaignImageUrl(campaign.metadata_uri)!}
                     alt={campaign.title}
-                    className="object-cover w-full h-full"
+                    fill
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 800px"
+                    loading="lazy"
+                    placeholder="blur"
+                    blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgZmlsbD0iI2UwZTBlMCIvPjwvc3ZnPg=="
+                    className="object-cover"
                     onError={() => setImgError(true)}
                   />
                 ) : (
@@ -154,11 +168,15 @@ export function CampaignDetailsClient({ params }: { params: { id: string } }) {
                   <div className="flex justify-between items-end">
                     <div className="space-y-1">
                       <p className="text-sm text-muted-foreground">Raised</p>
-                      <p className="text-2xl font-bold">{fromStroops(campaign.raised_amount)} XLM</p>
+                      <p className="text-2xl font-bold">
+                        {fromStroops(campaign.raised_amount)} XLM
+                      </p>
                     </div>
                     <div className="text-right space-y-1">
                       <p className="text-sm text-muted-foreground">Target</p>
-                      <p className="text-lg font-medium">{fromStroops(campaign.target_amount)} XLM</p>
+                      <p className="text-lg font-medium">
+                        {fromStroops(campaign.target_amount)} XLM
+                      </p>
                     </div>
                   </div>
                   <Progress

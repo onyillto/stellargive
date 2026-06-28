@@ -297,7 +297,7 @@ fn test_refund_underflow_guard() {
     // Refund correctly the first time
     client.claim_refund(&donor, &id);
 
-    // Second refund attempt should not underflow raised_amount, 
+    // Second refund attempt should not underflow raised_amount,
     // it should be caught by NothingToRefund because donor contribution is zeroed.
     let result = client.try_claim_refund(&donor, &id);
     assert_eq!(result, Err(Ok(ContractError::NothingToRefund)));

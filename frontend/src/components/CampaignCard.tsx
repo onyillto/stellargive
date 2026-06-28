@@ -2,6 +2,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { Campaign, fromStroops } from "@/lib/soroban";
 import { calculateProgress, getCampaignImageUrl } from "@/lib/utils";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,11 +36,15 @@ export function CampaignCard({ campaign }: { campaign: Campaign }) {
     <Card className="flex flex-col group hover:border-primary/50 transition-all duration-300 overflow-hidden">
       <div className="relative aspect-video w-full bg-muted flex items-center justify-center overflow-hidden">
         {getCampaignImageUrl(campaign.metadata_uri) && !imgError ? (
-          <img
-            src={getCampaignImageUrl(campaign.metadata_uri)}
+          <Image
+            src={getCampaignImageUrl(campaign.metadata_uri)!}
             alt={campaign.title}
+            fill
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             loading="lazy"
-            className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105"
+            placeholder="blur"
+            blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNzAwIiBoZWlnaHQ9IjQ3NSIgZmlsbD0iI2UwZTBlMCIvPjwvc3ZnPg=="
+            className="object-cover transition-transform duration-500 group-hover:scale-105"
             onError={() => setImgError(true)}
           />
         ) : (

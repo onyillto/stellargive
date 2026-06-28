@@ -183,8 +183,14 @@ export function useDonate() {
       await queryClient.cancelQueries({ queryKey: ["campaign", variables.campaignId.toString()] });
       await queryClient.cancelQueries({ queryKey: ["campaigns"] });
 
-      const previousCampaign = queryClient.getQueryData<Campaign>(["campaign", variables.campaignId.toString()]);
-      const previousCampaignsQueries = queryClient.getQueriesData<{ campaigns: Campaign[]; hasMore: boolean }>({ queryKey: ["campaigns"] });
+      const previousCampaign = queryClient.getQueryData<Campaign>([
+        "campaign",
+        variables.campaignId.toString(),
+      ]);
+      const previousCampaignsQueries = queryClient.getQueriesData<{
+        campaigns: Campaign[];
+        hasMore: boolean;
+      }>({ queryKey: ["campaigns"] });
 
       const amountStroops = toStroops(variables.amount);
 
@@ -197,15 +203,19 @@ export function useDonate() {
       }
 
       // Update campaigns lists (recent, paged)
-      queryClient.setQueriesData<{ campaigns: Campaign[]; hasMore: boolean }>({ queryKey: ["campaigns"] }, (old: any) => {
-        if (!old) return old;
-        const newCampaigns = old.campaigns?.map((c: any) =>
-          c.id === variables.campaignId
-            ? { ...c, raised_amount: c.raised_amount + amountStroops }
-            : c
-        ) || [];
-        return { ...old, campaigns: newCampaigns };
-      });
+      queryClient.setQueriesData<{ campaigns: Campaign[]; hasMore: boolean }>(
+        { queryKey: ["campaigns"] },
+        (old: any) => {
+          if (!old) return old;
+          const newCampaigns =
+            old.campaigns?.map((c: any) =>
+              c.id === variables.campaignId
+                ? { ...c, raised_amount: c.raised_amount + amountStroops }
+                : c,
+            ) || [];
+          return { ...old, campaigns: newCampaigns };
+        },
+      );
 
       const toastId = toast.loading("Submitting transaction...");
       return { previousCampaign, previousCampaignsQueries, toastId };
@@ -227,7 +237,10 @@ export function useDonate() {
     },
     onError: (error: any, variables: any, context: any) => {
       if (context?.previousCampaign) {
-        queryClient.setQueryData(["campaign", variables.campaignId.toString()], context.previousCampaign);
+        queryClient.setQueryData(
+          ["campaign", variables.campaignId.toString()],
+          context.previousCampaign,
+        );
       }
       if (context?.previousCampaignsQueries) {
         context.previousCampaignsQueries.forEach(([queryKey, previousData]: any) => {
@@ -342,10 +355,7 @@ export function useRefundEligibility(campaignId: bigint, isCancelled: boolean) {
     queryFn: async () => {
       if (!address || !isCancelled) return false;
       try {
-        const args = [
-          new Address(address).toScVal(),
-          nativeToScVal(campaignId, { type: "u64" }),
-        ];
+        const args = [new Address(address).toScVal(), nativeToScVal(campaignId, { type: "u64" })];
         const fee = await estimateFee(address, "claim_refund", args);
         return fee !== null;
       } catch {
@@ -494,7 +504,10 @@ export function useCancelCampaign() {
   });
 }
 
-export function useWalletBalance(tokenContractId: string | null | undefined, address: string | null) {
+export function useWalletBalance(
+  tokenContractId: string | null | undefined,
+  address: string | null,
+) {
   return useQuery({
     queryKey: ["wallet-balance", tokenContractId, address],
     queryFn: async () => {
@@ -522,4 +535,3 @@ export function useResolvedName(address: string | null) {
     retry: false, // Don't retry on failure
   });
 }
-

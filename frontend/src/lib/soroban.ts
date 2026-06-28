@@ -202,9 +202,7 @@ export async function estimateFee(
 
     const sim = await server.simulateTransaction(tx);
     if (rpc.Api.isSimulationError(sim)) return null;
-    return Number(
-      (sim as rpc.Api.SimulateTransactionSuccessResponse).minResourceFee ?? 0,
-    );
+    return Number((sim as rpc.Api.SimulateTransactionSuccessResponse).minResourceFee ?? 0);
   } catch {
     return null;
   }

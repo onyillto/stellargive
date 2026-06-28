@@ -1,6 +1,15 @@
 import * as Sentry from "@sentry/nextjs";
 
 /**
+ * Checks if analytics consent has been granted by the user.
+ */
+function hasAnalyticsConsent(): boolean {
+  if (typeof window === "undefined") return false;
+  const consent = localStorage.getItem("stellargive_analytics_consent");
+  return consent === "accepted";
+}
+
+/**
  * Checks if the error is an expected user-driven error (e.g. rejecting a wallet prompt).
  */
 const isExpectedError = (error: any): boolean => {
@@ -25,7 +34,7 @@ const isExpectedError = (error: any): boolean => {
 };
 
 export const captureRpcError = (error: any, context?: Record<string, any>) => {
-  if (isExpectedError(error)) return;
+  if (isExpectedError(error) || !hasAnalyticsConsent()) return;
 
   Sentry.captureException(error, {
     tags: {
@@ -36,7 +45,7 @@ export const captureRpcError = (error: any, context?: Record<string, any>) => {
 };
 
 export const captureTransactionError = (error: any, context?: Record<string, any>) => {
-  if (isExpectedError(error)) return;
+  if (isExpectedError(error) || !hasAnalyticsConsent()) return;
 
   Sentry.captureException(error, {
     tags: {
@@ -47,7 +56,7 @@ export const captureTransactionError = (error: any, context?: Record<string, any
 };
 
 export const captureUnexpectedError = (error: any, context?: Record<string, any>) => {
-  if (isExpectedError(error)) return;
+  if (isExpectedError(error) || !hasAnalyticsConsent()) return;
 
   Sentry.captureException(error, {
     tags: {
@@ -64,7 +73,7 @@ export const captureUnexpectedError = (error: any, context?: Record<string, any>
  * server-side log.
  */
 export const captureRouteError = (error: any, context?: Record<string, any>) => {
-  if (isExpectedError(error)) return;
+  if (isExpectedError(error) || !hasAnalyticsConsent()) return;
 
   Sentry.captureException(error, {
     tags: {

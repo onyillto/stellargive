@@ -13,7 +13,8 @@ export function CampaignNotFound() {
       <div className="space-y-2">
         <h2 className="text-2xl font-bold">Campaign Not Found</h2>
         <p className="text-muted-foreground mt-2 max-w-md mx-auto">
-          The campaign you&apos;re looking for doesn&apos;t exist or has been removed. Check the link and try again.
+          The campaign you&apos;re looking for doesn&apos;t exist or has been removed. Check the
+          link and try again.
         </p>
       </div>
       <Button asChild>
