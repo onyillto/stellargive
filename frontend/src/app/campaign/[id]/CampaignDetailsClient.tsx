@@ -33,27 +33,8 @@ import { sanitizeUrl } from "@/lib/sanitize";
 import { RefundButton } from "@/components/RefundButton";
 import { TopDonors } from "@/components/TopDonors";
 import { StickyDonateBar } from "@/components/StickyDonateBar";
-import { Progress } from "@/components/ui/progress";
-import { fromStroops } from "@/lib/soroban";
-import { useState } from "react";
-import { Image as ImageIcon } from "lucide-react";
-
-function calculateProgress(raised: bigint, target: bigint): number {
-  if (target === 0n) return 0;
-  const scaled = (raised * 10_000n) / target;
-  return Math.min(Number(scaled) / 100, 100);
-}
-
-function getCampaignImageUrl(uri?: string) {
-  if (!uri) return null;
-  if (uri.startsWith("ipfs://")) {
-    return uri.replace("ipfs://", "https://ipfs.io/ipfs/");
-  }
-  if (uri.startsWith("https://")) {
-    return uri;
-  }
-  return null;
-}
+import { CampaignStatusBadge } from "@/components/CampaignStatusBadge";
+import { useCountdown } from "@/hooks/useCountdown";
 
 export function CampaignDetailsClient({ params }: { params: { id: string } }) {
   const [imgError, setImgError] = useState(false);
@@ -62,6 +43,7 @@ export function CampaignDetailsClient({ params }: { params: { id: string } }) {
   const cancelCampaign = useCancelCampaign();
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const [donateOpen, setDonateOpen] = useState(false);
+  const countdown = useCountdown(campaign?.deadline || 0n);
 
   const isCreator = !!address && !!campaign && campaign.creator === address;
 
@@ -69,13 +51,18 @@ export function CampaignDetailsClient({ params }: { params: { id: string } }) {
     <div className="p-8 max-w-4xl mx-auto space-y-6">
       <div className="flex justify-between items-start">
         <div className="space-y-2">
-          <h1 className="text-3xl font-bold">
-            {isLoading ? (
-              <Skeleton className="h-9 w-64" />
-            ) : (
-              campaign?.title || `Campaign #${params.id}`
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">
+              {isLoading ? (
+                <Skeleton className="h-9 w-64" />
+              ) : (
+                campaign?.title || `Campaign #${params.id}`
+              )}
+            </h1>
+            {!isLoading && campaign && (
+              <CampaignStatusBadge status={campaign.status} deadline={campaign.deadline} />
             )}
-          </h1>
+          </div>
           {!isLoading && campaign && (
             <div className="flex flex-wrap gap-4 text-sm text-muted-foreground pt-1">
               <span className="inline-flex items-center gap-2">
@@ -105,6 +92,11 @@ export function CampaignDetailsClient({ params }: { params: { id: string } }) {
                 >
                   🐦 Twitter
                 </a>
+              )}
+              {campaign.status === "Active" && (
+                <span className="inline-flex items-center gap-1 font-medium text-orange-500">
+                  ⏱️ {countdown.isEnded ? "Ended" : `${countdown.days}d ${countdown.hours}h ${countdown.minutes}m left`}
+                </span>
               )}
             </div>
           )}

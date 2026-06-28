@@ -14,6 +14,7 @@ import {
   getTotalCampaigns,
   getSACBalance,
   resolveAddressName,
+  Campaign,
 } from "@/lib/soroban";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { Address, nativeToScVal } from "@stellar/stellar-sdk";
@@ -178,9 +179,36 @@ export function useDonate() {
 
       return submitTransaction(address, "donate", args);
     },
-    onMutate: () => {
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: ["campaign", variables.campaignId.toString()] });
+      await queryClient.cancelQueries({ queryKey: ["campaigns"] });
+
+      const previousCampaign = queryClient.getQueryData<Campaign>(["campaign", variables.campaignId.toString()]);
+      const previousCampaignsQueries = queryClient.getQueriesData<{ campaigns: Campaign[]; hasMore: boolean }>({ queryKey: ["campaigns"] });
+
+      const amountStroops = toStroops(variables.amount);
+
+      // Update individual campaign cache
+      if (previousCampaign) {
+        queryClient.setQueryData<Campaign>(["campaign", variables.campaignId.toString()], {
+          ...previousCampaign,
+          raised_amount: previousCampaign.raised_amount + amountStroops,
+        });
+      }
+
+      // Update campaigns lists (recent, paged)
+      queryClient.setQueriesData<{ campaigns: Campaign[]; hasMore: boolean }>({ queryKey: ["campaigns"] }, (old) => {
+        if (!old) return old;
+        const newCampaigns = old.campaigns?.map((c) =>
+          c.id === variables.campaignId
+            ? { ...c, raised_amount: c.raised_amount + amountStroops }
+            : c
+        ) || [];
+        return { ...old, campaigns: newCampaigns };
+      });
+
       const toastId = toast.loading("Submitting transaction...");
-      return { toastId };
+      return { previousCampaign, previousCampaignsQueries, toastId };
     },
     onSuccess: (data: any, variables, context) => {
       const action = data?.hash
@@ -196,16 +224,26 @@ export function useDonate() {
       } else {
         toast.success(message, { action });
       }
-      queryClient.invalidateQueries({ queryKey: ["campaign", variables.campaignId.toString()] });
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
     },
     onError: (error: any, variables, context) => {
+      if (context?.previousCampaign) {
+        queryClient.setQueryData(["campaign", variables.campaignId.toString()], context.previousCampaign);
+      }
+      if (context?.previousCampaignsQueries) {
+        context.previousCampaignsQueries.forEach(([queryKey, previousData]) => {
+          queryClient.setQueryData(queryKey, previousData);
+        });
+      }
       const mappedError = mapTransactionError(error);
       if (context?.toastId) {
         toast.error(mappedError, { id: context.toastId });
       } else {
         toast.error(mappedError);
       }
+    },
+    onSettled: (data, error, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["campaign", variables.campaignId.toString()] });
+      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
     },
   });
 }

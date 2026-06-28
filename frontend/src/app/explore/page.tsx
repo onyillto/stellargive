@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { CampaignCard } from "@/components/CampaignCard";
+import { CampaignStatusBadge } from "@/components/CampaignStatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCampaignsPaged } from "@/hooks/useSoroban";
@@ -185,31 +186,40 @@ function ExploreContent() {
         </div>
 
         {/* Status filters */}
-        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Campaign status filters">
-          <Button
-            variant={statusFilter === "all" ? "default" : "outline"}
+        <div className="flex flex-wrap gap-2 items-center" role="tablist" aria-label="Campaign status filters">
+          <button
             onClick={() => setStatusFilter("all")}
             role="tab"
             aria-selected={statusFilter === "all"}
+            className="focus:outline-none"
           >
-            All
-          </Button>
-          <Button
-            variant={statusFilter === "active" ? "default" : "outline"}
+            <CampaignStatusBadge 
+              status="All" 
+              className={`text-sm px-4 py-1.5 transition-opacity ${statusFilter === "all" ? "ring-2 ring-primary ring-offset-2 opacity-100" : "opacity-60 hover:opacity-100"}`} 
+            />
+          </button>
+          <button
             onClick={() => setStatusFilter("active")}
             role="tab"
             aria-selected={statusFilter === "active"}
+            className="focus:outline-none"
           >
-            Active
-          </Button>
-          <Button
-            variant={statusFilter === "funded" ? "default" : "outline"}
+            <CampaignStatusBadge 
+              status="Active" 
+              className={`text-sm px-4 py-1.5 transition-opacity ${statusFilter === "active" ? "ring-2 ring-primary ring-offset-2 opacity-100" : "opacity-60 hover:opacity-100"}`} 
+            />
+          </button>
+          <button
             onClick={() => setStatusFilter("funded")}
             role="tab"
             aria-selected={statusFilter === "funded"}
+            className="focus:outline-none"
           >
-            Funded
-          </Button>
+            <CampaignStatusBadge 
+              status="Funded" 
+              className={`text-sm px-4 py-1.5 transition-opacity ${statusFilter === "funded" ? "ring-2 ring-primary ring-offset-2 opacity-100" : "opacity-60 hover:opacity-100"}`} 
+            />
+          </button>
         </div>
 
         {isLoading ? (
