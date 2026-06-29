@@ -17,7 +17,7 @@ import {
   Campaign,
 } from "@/lib/soroban";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import { Address, nativeToScVal } from "@stellar/stellar-sdk";
+import { Address, nativeToScVal, xdr } from "@stellar/stellar-sdk";
 import { useWallet } from "@/lib/WalletProvider";
 
 export function useCampaign(id: bigint) {
@@ -533,5 +533,44 @@ export function useResolvedName(address: string | null) {
     staleTime: 1000 * 60 * 60, // Cache for 1 hour
     gcTime: 1000 * 60 * 60 * 24, // Keep in cache for 24 hours
     retry: false, // Don't retry on failure
+  });
+}
+
+export function useAddToWhitelist() {
+  const { address } = useWallet();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: { campaignId: bigint; addressToWhitelist: string }) => {
+      if (!address) throw new Error("Wallet not connected");
+
+      const args = [
+        nativeToScVal(params.campaignId, { type: "u64" }),
+        xdr.ScVal.scvVec([new Address(params.addressToWhitelist).toScVal()]),
+      ];
+
+      return submitTransaction(address, "add_to_whitelist", args);
+    },
+    onMutate: () => {
+      const toastId = toast.loading("Adding address to whitelist...");
+      return { toastId };
+    },
+    onSuccess: (data: any, variables: any, context: any) => {
+      const message = "Address successfully whitelisted";
+      if (context?.toastId) {
+        toast.success(message, { id: context.toastId });
+      } else {
+        toast.success(message);
+      }
+      queryClient.invalidateQueries({ queryKey: ["campaign", variables.campaignId.toString()] });
+    },
+    onError: (error: any, variables: any, context: any) => {
+      const mappedError = mapTransactionError(error);
+      if (context?.toastId) {
+        toast.error(mappedError, { id: context.toastId });
+      } else {
+        toast.error(mappedError);
+      }
+    },
   });
 }
