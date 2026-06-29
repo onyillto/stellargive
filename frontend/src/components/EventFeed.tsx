@@ -106,8 +106,8 @@ export function EventFeed() {
                   <td className="px-4 py-3">
                     {event.topic === "received" && (
                       <>
-                        <span className="font-bold">{fromStroops(event.data[2])} XLM</span> donated to
-                        Campaign #{event.data[0].toString()}
+                        <span className="font-bold">{fromStroops(event.data[2])} XLM</span> donated
+                        to Campaign #{event.data[0].toString()}
                       </>
                     )}
                     {event.topic === "created" && (
@@ -118,14 +118,12 @@ export function EventFeed() {
                     )}
                     {event.topic === "claimed" && (
                       <>
-                        <span className="font-bold">{fromStroops(event.data[3])} XLM</span> claimed by
-                        beneficiary
+                        <span className="font-bold">{fromStroops(event.data[3])} XLM</span> claimed
+                        by beneficiary
                       </>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {event.ledger}
-                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{event.ledger}</td>
                   <td className="px-4 py-3 text-right">
                     <a
                       href={`https://stellar.expert/explorer/testnet/tx/${event.txHash}`}
@@ -133,7 +131,8 @@ export function EventFeed() {
                       rel="noreferrer"
                       className="font-mono text-primary hover:underline"
                     >
-                      {event.txHash.substring(0, 8)}...{event.txHash.substring(event.txHash.length - 4)}
+                      {event.txHash.substring(0, 8)}...
+                      {event.txHash.substring(event.txHash.length - 4)}
                     </a>
                   </td>
                 </tr>
@@ -167,7 +166,7 @@ export function EventFeed() {
                 </div>
                 <span className="text-xs text-muted-foreground">Ledger {event.ledger}</span>
               </div>
-              
+
               <p className="text-sm">
                 {event.topic === "received" && (
                   <>
@@ -188,24 +187,17 @@ export function EventFeed() {
                   </>
                 )}
               </p>
-              <div className="flex items-center gap-2 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
-                <span>{event.topic}</span>
-                <span>•</span>
-                <span>Ledger {event.ledger}</span>
-                {event.txHash && (
-                  <>
-                    <span>•</span>
-                    <a
-                      href={getStellarExpertTxUrl(event.txHash)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:text-primary transition-colors normal-case tracking-normal font-normal"
-                      aria-label="Verify transaction on StellarExpert"
-                    >
-                      Verify ↗
-                    </a>
-                  </>
-                )}
+
+              <div className="pt-3 border-t flex justify-between items-center text-xs">
+                <span className="text-muted-foreground">Tx Hash</span>
+                <a
+                  href={`https://stellar.expert/explorer/testnet/tx/${event.txHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-primary hover:underline"
+                >
+                  {event.txHash.substring(0, 8)}...{event.txHash.substring(event.txHash.length - 4)}
+                </a>
               </div>
             </div>
           ))}

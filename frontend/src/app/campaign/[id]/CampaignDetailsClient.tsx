@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { useCampaign, useCancelCampaign } from "@/hooks/useSoroban";
+import { useCampaign, useCancelCampaign, useEvents } from "@/hooks/useSoroban";
 import { useWallet } from "@/lib/WalletProvider";
 import { ShareButton } from "@/components/ShareButton";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,93 @@ import { useCountdown } from "@/hooks/useCountdown";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { CampaignDetailSkeleton } from "@/components/CampaignSkeleton";
 import { fromStroops } from "@/lib/soroban";
+
+function TopDonors({ campaignId }: { campaignId: bigint }) {
+  const { data: allEvents, isLoading } = useEvents();
+
+  if (isLoading) return <Skeleton className="h-32 w-full mt-6" />;
+
+  const donationsByDonor = allEvents
+    ?.filter((e: any) => e.topic === "received" && e.data && BigInt(e.data[0]) === campaignId)
+    .reduce(
+      (acc: any, event: any) => {
+        const donor = event.data[1]?.toString();
+        const amount = BigInt(event.data[2]);
+        if (donor && donor !== "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF") {
+          acc[donor] = (acc[donor] || 0n) + amount;
+        }
+        return acc;
+      },
+      {} as Record<string, bigint>,
+    );
+
+  const topDonors = Object.entries((donationsByDonor as Record<string, bigint>) || {})
+    .sort((a, b) => Number(b[1] - a[1]))
+    .slice(0, 5);
+
+  return (
+    <div className="space-y-4 pt-6 border-t mt-6">
+      <h3 className="text-lg font-bold">Top Donors</h3>
+      {topDonors.length > 0 ? (
+        <div className="space-y-3">
+          {topDonors.map(([donor, amount], index) => (
+            <div
+              key={donor}
+              className="flex justify-between items-center bg-card p-3 rounded-lg border shadow-sm"
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex items-center justify-center w-6 h-6 rounded-full bg-muted text-muted-foreground text-xs font-bold">
+                  {index + 1}
+                </span>
+                <AddressLink address={donor} />
+              </div>
+              <span className="font-bold text-primary">{fromStroops(amount as bigint)} XLM</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div
+          role="status"
+          aria-live="polite"
+          className="text-center py-8 text-muted-foreground space-y-1 bg-muted/20 rounded-lg border border-dashed"
+        >
+          <p className="text-sm font-medium">No donations yet</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CampaignTimeline({ campaign }: { campaign: any }) {
+  const { data: allEvents } = useEvents();
+  const createdEvent = allEvents?.find(
+    (e: any) => e.topic === "created" && e.data && BigInt(e.data[0]) === campaign.id,
+  );
+
+  return (
+    <div className="space-y-4 pt-6 border-t mt-6">
+      <h3 className="text-lg font-bold">Timeline</h3>
+      <ol className="relative border-s border-muted ml-3 space-y-6">
+        <li className="ms-4">
+          <div className="absolute w-3 h-3 bg-primary rounded-full mt-1.5 -start-1.5 border border-background"></div>
+          <time className="mb-1 text-xs font-normal leading-none text-muted-foreground">
+            {createdEvent?.createdAt
+              ? new Date(createdEvent.createdAt).toLocaleDateString()
+              : "Unknown"}
+          </time>
+          <h4 className="text-sm font-semibold">Campaign Created</h4>
+        </li>
+        <li className="ms-4">
+          <div className="absolute w-3 h-3 bg-muted rounded-full mt-1.5 -start-1.5 border border-background"></div>
+          <time className="mb-1 text-xs font-normal leading-none text-muted-foreground">
+            {new Date(Number(campaign.deadline) * 1000).toLocaleDateString()}
+          </time>
+          <h4 className="text-sm font-semibold">Deadline</h4>
+        </li>
+      </ol>
+    </div>
+  );
+}
 
 export function CampaignDetailsClient({ params }: { params: { id: string } }) {
   const [imgError, setImgError] = useState(false);
@@ -195,44 +282,12 @@ export function CampaignDetailsClient({ params }: { params: { id: string } }) {
                       </p>
                     </div>
                   </div>
-                  {(() => {
-                    const progress = calculateProgress(
-                      campaign.raised_amount,
-                      campaign.target_amount,
-                    );
-                    const raised = Number(fromStroops(campaign.raised_amount));
-                    const target = Number(fromStroops(campaign.target_amount));
-                    const gap = Math.max(0, target - raised);
-                    const showStrip =
-                      campaign.status === "Active" && progress >= 90 && progress < 100 && gap > 0;
-                    return (
-                      <>
-                        <Progress
-                          value={progress}
-                          className="h-3"
-                          variant={
-                            progress >= 100 ? "success" : progress >= 50 ? "warning" : "default"
-                          }
-                          aria-label="Campaign progress"
-                        />
-                        {showStrip && (
-                          <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
-                            <div className="flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                              <Zap className="h-4 w-4 shrink-0" />
-                              <span>Only {gap.toFixed(2)} XLM left — fund the gap!</span>
-                            </div>
-                            <button
-                              onClick={() => setDonateOpen(true)}
-                              className="shrink-0 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600"
-                              aria-label={`Quick donate to fund the remaining ${gap.toFixed(2)} XLM`}
-                            >
-                              Donate now
-                            </button>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
+                  <Progress
+                    value={calculateProgress(campaign.raised_amount, campaign.target_amount)}
+                    className="h-3"
+                    aria-label="Campaign progress"
+                    showValueLabel={true}
+                  />
                 </div>
 
                 <div className="prose prose-sm dark:prose-invert max-w-none">
@@ -240,6 +295,9 @@ export function CampaignDetailsClient({ params }: { params: { id: string } }) {
                     {campaign.description || "No description provided for this campaign."}
                   </p>
                 </div>
+
+                <TopDonors campaignId={BigInt(params.id)} />
+                <CampaignTimeline campaign={campaign} />
               </div>
             </div>
           )}

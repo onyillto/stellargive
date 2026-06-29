@@ -21,7 +21,6 @@ import {
   AlertCircle,
   RotateCw,
 } from "lucide-react";
-import { AddressLink } from "@/components/AddressLink";
 
 const ZERO_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
@@ -46,7 +45,6 @@ export default function ProfilePage() {
     isError: eventsError,
     refetch: refetchEvents,
   } = useEvents(100);
-  const [activeTab, setActiveTab] = useState<"campaigns" | "donations">("campaigns");
 
   const { created, supported, totalRaised, totalDonated, activeCount, myDonationsEvents } =
     useMemo(() => {

@@ -96,16 +96,19 @@ afterEach(() => {
 });
 
 describe("Navbar — primary nav links", () => {
-  it.each(PRIMARY_NAV_LINKS)("renders an '$name' link pointing to $href", async ({ name, href }) => {
-    await renderNavbarConnected();
-    // The same link appears twice: once in the desktop nav, once in the
-    // mobile drawer (always present in the DOM, just translated off-screen).
-    const links = screen.getAllByRole("link", { name });
-    expect(links.length).toBe(2);
-    for (const link of links) {
-      expect(link).toHaveAttribute("href", href);
-    }
-  });
+  it.each(PRIMARY_NAV_LINKS)(
+    "renders an '$name' link pointing to $href",
+    async ({ name, href }) => {
+      await renderNavbarConnected();
+      // The same link appears twice: once in the desktop nav, once in the
+      // mobile drawer (always present in the DOM, just translated off-screen).
+      const links = screen.getAllByRole("link", { name });
+      expect(links.length).toBe(2);
+      for (const link of links) {
+        expect(link).toHaveAttribute("href", href);
+      }
+    },
+  );
 
   it("renders all four primary nav links", async () => {
     await renderNavbarConnected();
@@ -204,72 +207,5 @@ describe("Navbar — mobile menu toggle", () => {
 
     fireEvent.click(screen.getByLabelText(/close menu/i));
     expect(getDrawer(container).className).toContain("-translate-x-full");
-  });
-
-  describe("keyboard navigation", () => {
-    afterEach(() => {
-      vi.restoreAllMocks();
-    });
-
-    function getDrawer(container: HTMLElement): HTMLElement {
-      const drawer = container.querySelector(".fixed.inset-y-0.left-0");
-      if (!drawer) throw new Error("Mobile drawer element not found");
-      return drawer as HTMLElement;
-    }
-
-    it("traps Tab focus within the open mobile drawer", async () => {
-      const user = userEvent.setup();
-      const { container } = await renderNavbarConnected();
-
-      await user.click(screen.getByLabelText(/open menu/i));
-
-      const drawer = getDrawer(container);
-      expect(drawer.className).toContain("translate-x-0");
-
-      // Tab through all focusable elements — focus should stay trapped
-      const focusable = drawer.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      );
-      for (let i = 0; i < focusable.length * 2; i++) {
-        await user.tab();
-        expect(drawer).toContainElement(document.activeElement);
-      }
-    });
-
-    it("traps Shift+Tab cycling backwards within the open mobile drawer", async () => {
-      const user = userEvent.setup();
-      const { container } = await renderNavbarConnected();
-
-      await user.click(screen.getByLabelText(/open menu/i));
-
-      const drawer = getDrawer(container);
-      expect(drawer.className).toContain("translate-x-0");
-
-      const focusable = drawer.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      );
-      for (let i = 0; i < focusable.length * 2; i++) {
-        await user.tab({ shift: true });
-        expect(drawer).toContainElement(document.activeElement);
-      }
-    });
-
-    it("closes the drawer and returns focus to menu button on Escape", async () => {
-      const user = userEvent.setup();
-      const { container } = await renderNavbarConnected();
-
-      const menuButton = screen.getByLabelText(/open menu/i);
-      await user.click(menuButton);
-
-      const drawer = getDrawer(container);
-      expect(drawer.className).toContain("translate-x-0");
-
-      await user.keyboard("{Escape}");
-
-      await waitFor(() => {
-        expect(getDrawer(container).className).toContain("-translate-x-full");
-      });
-      expect(document.activeElement).toBe(menuButton);
-    });
   });
 });

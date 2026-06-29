@@ -17,15 +17,8 @@ interface GasWarningProps {
  * a transaction's simulated resource fee exceeds MAX_SIMULATION_FEE_STROOPS.
  */
 export function GasWarning({ feeStroops, estimatedFeeStroops, onDismiss }: GasWarningProps) {
-  const { address, network } = useWallet();
-  const walletBalance = useWalletBalance(NATIVE_XLM, address);
-  const balanceStroops = walletBalance.data != null ? Number(walletBalance.data) : null;
-
   const isHighFee = feeStroops != null && feeStroops > MAX_SIMULATION_FEE_STROOPS;
   const showEstimate = estimatedFeeStroops != null && !isHighFee;
-
-  const isLowBalance =
-    balanceStroops != null && estimatedFeeStroops != null && balanceStroops < estimatedFeeStroops;
 
   if (!isHighFee && !showEstimate && !isLowBalance) return null;
 

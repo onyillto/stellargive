@@ -37,7 +37,13 @@ export const makeEvent = (
   topic: "received" | "created" | "claimed",
   data: (bigint | string | number | null)[],
   ledger = 100,
-) => ({ id, topic, data, ledger });
+) => ({
+  id,
+  topic,
+  data,
+  ledger,
+  txHash: "0000000000000000000000000000000000000000000000000000000000000000",
+});
 
 export const makeDonationEvent = (
   id: string,
@@ -50,4 +56,5 @@ export const makeDonationEvent = (
   topic: "received",
   data: [campaignId, donor, amountStroops, 0n, "native"],
   ledger,
+  txHash: "0000000000000000000000000000000000000000000000000000000000000000",
 });

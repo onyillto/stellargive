@@ -19,7 +19,7 @@ export const CONTRACT_ID = process.env.NEXT_PUBLIC_CONTRACT_ID!;
 export const RPC_URL = process.env.NEXT_PUBLIC_SOROBAN_RPC_URL!;
 export const NETWORK_PASSPHRASE = process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE!;
 
-export const server = new rpc.Server(RPC_URL);
+export const server = new rpc.Server(RPC_URL, { allowHttp: RPC_URL.startsWith("http:") });
 
 export const STROOP_PRECISION = 7;
 
@@ -141,16 +141,58 @@ export async function getCampaign(id: bigint): Promise<Campaign> {
   return parseCampaign(result);
 }
 
-export async function getRecentCampaigns(limit = 10): Promise<Campaign[]> {
+export async function getRecentCampaigns(limit = 20): Promise<Campaign[]> {
   const campaigns: Campaign[] = [];
-  for (let i = 1n; i <= BigInt(limit); i++) {
+  let currentOffset = 0n;
+  const batchSize = 20;
+
+  while (campaigns.length < limit) {
+    const fetchLimit = Math.min(batchSize, limit - campaigns.length);
+
+    const tx = new TransactionBuilder(
+      new Account("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF", "0"),
+      {
+        fee: "100",
+        networkPassphrase: NETWORK_PASSPHRASE,
+      },
+    )
+      .addOperation(
+        Operation.invokeHostFunction({
+          func: "get_campaigns_paged",
+          contractId: CONTRACT_ID,
+          args: [
+            nativeToScVal(currentOffset, { type: "u64" }),
+            nativeToScVal(fetchLimit, { type: "u32" }),
+          ],
+        } as any),
+      )
+      .setTimeout(30)
+      .build();
+
     try {
-      const c = await getCampaign(i);
-      campaigns.push(c);
+      const sim = await server.simulateTransaction(tx);
+      if (rpc.Api.isSimulationError(sim) || !sim.result) {
+        break;
+      }
+
+      const result = scValToNative(sim.result.retval);
+      const batch = (result as any[]).map(parseCampaign);
+
+      if (batch.length === 0) {
+        break;
+      }
+
+      campaigns.push(...batch);
+      currentOffset += BigInt(batch.length);
+
+      if (batch.length < fetchLimit) {
+        break;
+      }
     } catch (e) {
       break;
     }
   }
+
   return campaigns;
 }
 
