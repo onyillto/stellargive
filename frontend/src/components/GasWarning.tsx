@@ -21,15 +21,11 @@ export function GasWarning({ feeStroops, estimatedFeeStroops, onDismiss }: GasWa
   const walletBalance = useWalletBalance(NATIVE_XLM, address);
   const balanceStroops = walletBalance.data != null ? Number(walletBalance.data) : null;
 
-  const isHighFee =
-    feeStroops != null && feeStroops > MAX_SIMULATION_FEE_STROOPS;
-  const showEstimate =
-    estimatedFeeStroops != null && !isHighFee;
+  const isHighFee = feeStroops != null && feeStroops > MAX_SIMULATION_FEE_STROOPS;
+  const showEstimate = estimatedFeeStroops != null && !isHighFee;
 
   const isLowBalance =
-    balanceStroops != null &&
-    estimatedFeeStroops != null &&
-    balanceStroops < estimatedFeeStroops;
+    balanceStroops != null && estimatedFeeStroops != null && balanceStroops < estimatedFeeStroops;
 
   if (!isHighFee && !showEstimate && !isLowBalance) return null;
 

@@ -143,7 +143,7 @@ export function ShareButton({ campaign }: { campaign: ShareableCampaign }) {
               <Twitter className="w-4 h-4" />
               Share on X
             </Button>
-            
+
             <Button
               variant="outline"
               className="flex items-center justify-start gap-2 w-full"

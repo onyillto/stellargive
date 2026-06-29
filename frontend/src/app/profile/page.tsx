@@ -11,7 +11,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useRecentCampaigns, useEvents } from "@/hooks/useSoroban";
 import { fromStroops, type Campaign } from "@/lib/soroban";
 import { useWallet } from "@/lib/WalletProvider";
-import { Loader2, UserCircle, Wallet, HandCoins, TrendingUp, Megaphone, AlertCircle, RotateCw } from "lucide-react";
+import {
+  Loader2,
+  UserCircle,
+  Wallet,
+  HandCoins,
+  TrendingUp,
+  Megaphone,
+  AlertCircle,
+  RotateCw,
+} from "lucide-react";
 import { AddressLink } from "@/components/AddressLink";
 
 const ZERO_ADDRESS = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -25,40 +34,58 @@ function normalizeAddress(value: unknown): string | null {
 
 export default function ProfilePage() {
   const { address, isConnected } = useWallet();
-  const { data: campaigns, isLoading: campaignsLoading, isError: campaignsError, refetch: refetchCampaigns } = useRecentCampaigns();
-  const { data: events, isLoading: eventsLoading, isError: eventsError, refetch: refetchEvents } = useEvents(100);
+  const {
+    data: campaigns,
+    isLoading: campaignsLoading,
+    isError: campaignsError,
+    refetch: refetchCampaigns,
+  } = useRecentCampaigns();
+  const {
+    data: events,
+    isLoading: eventsLoading,
+    isError: eventsError,
+    refetch: refetchEvents,
+  } = useEvents(100);
   const [activeTab, setActiveTab] = useState<"campaigns" | "donations">("campaigns");
 
-  const { created, supported, totalRaised, totalDonated, activeCount, myDonationsEvents } = useMemo(() => {
-    const all: Campaign[] = campaigns ?? [];
-    const created = address ? all.filter((c) => c.creator === address) : [];
+  const { created, supported, totalRaised, totalDonated, activeCount, myDonationsEvents } =
+    useMemo(() => {
+      const all: Campaign[] = campaigns ?? [];
+      const created = address ? all.filter((c) => c.creator === address) : [];
 
-    const myDonations = (events ?? []).filter(
-      (e: any) => e.topic === "received" && normalizeAddress(e.data?.[1]) === address,
-    );
-    const supportedIds = new Set(
-      myDonations.map((e: any) => {
+      const myDonations = (events ?? []).filter(
+        (e: any) => e.topic === "received" && normalizeAddress(e.data?.[1]) === address,
+      );
+      const supportedIds = new Set(
+        myDonations.map((e: any) => {
+          try {
+            return BigInt(e.data[0]).toString();
+          } catch {
+            return "";
+          }
+        }),
+      );
+      const supported = all.filter((c) => supportedIds.has(c.id.toString()));
+
+      const totalRaised = created.reduce((acc, c) => acc + c.raised_amount, 0n);
+      const totalDonated = myDonations.reduce((acc: bigint, e: any) => {
         try {
-          return BigInt(e.data[0]).toString();
+          return acc + BigInt(e.data[2]);
         } catch {
-          return "";
+          return acc;
         }
-      }),
-    );
-    const supported = all.filter((c) => supportedIds.has(c.id.toString()));
+      }, 0n);
+      const activeCount = created.filter((c) => c.status === "Active").length;
 
-    const totalRaised = created.reduce((acc, c) => acc + c.raised_amount, 0n);
-    const totalDonated = myDonations.reduce((acc: bigint, e: any) => {
-      try {
-        return acc + BigInt(e.data[2]);
-      } catch {
-        return acc;
-      }
-    }, 0n);
-    const activeCount = created.filter((c) => c.status === "Active").length;
-
-    return { created, supported, totalRaised, totalDonated, activeCount, myDonationsEvents: myDonations };
-  }, [campaigns, events, address]);
+      return {
+        created,
+        supported,
+        totalRaised,
+        totalDonated,
+        activeCount,
+        myDonationsEvents: myDonations,
+      };
+    }, [campaigns, events, address]);
 
   // Auth guard — the dashboard is meaningless without a connected wallet.
   if (!isConnected || !address) {
@@ -109,9 +136,12 @@ export default function ProfilePage() {
             <div className="flex items-start gap-3">
               <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
               <div className="space-y-2 flex-1">
-                <h3 className="font-semibold text-red-900 dark:text-red-200">Failed to load data</h3>
+                <h3 className="font-semibold text-red-900 dark:text-red-200">
+                  Failed to load data
+                </h3>
                 <p className="text-sm text-red-800 dark:text-red-300">
-                  We encountered an error while fetching your campaigns. Please check your connection and try again.
+                  We encountered an error while fetching your campaigns. Please check your
+                  connection and try again.
                 </p>
               </div>
             </div>
@@ -249,7 +279,7 @@ function DonationsSection({
               // ignore
             }
             const campaign = campaigns.find((c) => c.id.toString() === campaignId);
-            
+
             return (
               <Card key={`${event.id}-${idx}`}>
                 <CardContent className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4">
@@ -257,7 +287,13 @@ function DonationsSection({
                     <p className="font-semibold">{amount} XLM Donated</p>
                     {campaign ? (
                       <p className="text-sm text-muted-foreground mt-1">
-                        To campaign: <Link href={`/campaign/${campaignId}`} className="text-primary hover:underline">{campaign.title}</Link>
+                        To campaign:{" "}
+                        <Link
+                          href={`/campaign/${campaignId}`}
+                          className="text-primary hover:underline"
+                        >
+                          {campaign.title}
+                        </Link>
                       </p>
                     ) : (
                       <p className="text-sm text-muted-foreground mt-1">
@@ -342,4 +378,3 @@ function CampaignsSectionSkeleton() {
     </section>
   );
 }
-
