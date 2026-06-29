@@ -10,3 +10,7 @@ export const formatAddress = (address: string): string => {
 export const formatXLM = (xlm: number): string => {
   return xlm.toFixed(7).replace(/\.?0+$/, "");
 };
+
+export const formatBasisPoints = (bps: number): string => {
+  return (bps / 100).toFixed(bps % 100 === 0 ? 0 : 1) + "%";
+};
