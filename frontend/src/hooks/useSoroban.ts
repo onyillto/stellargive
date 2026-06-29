@@ -7,7 +7,6 @@ import {
   getCampaignsPage,
   submitTransaction,
   estimateFee,
-  estimateFee,
   CONTRACT_ID,
   toStroops,
   getEvents,
